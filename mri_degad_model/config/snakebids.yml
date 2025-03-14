@@ -1,0 +1,87 @@
+bids_dir: "/path/to/bids/dir"
+output_dir: "/path/to/output/dir"
+
+force: True
+debug: False
+derivatives: False
+
+analysis_levels: &analysis_levels
+  - participant
+
+targets_by_analysis_level:
+  participant:
+    - "all"
+
+pybids_inputs:
+  t1w:
+    filters:
+      suffix: T1w
+      extension: .nii.gz
+      datatype: anat
+    wildcards:
+      - subject
+      - session
+      - acquisition
+      - reconstruction
+      - run
+
+# configuration for the command-line parameters to make available
+# passed on the argparse add_argument()
+parse_args:
+
+#---  core BIDS-app options --- (do not modify below)
+
+  bids_dir:
+    help: The directory with the input dataset formatted according
+          to the BIDS standard.
+
+  output_dir:
+    help: The directory where the output files
+          should be stored. If you are running group level analysis
+          this folder should be prepopulated with the results of the
+          participant level analysis.
+
+  analysis_level:
+    help: Level of the analysis that will be performed.
+    choices: *analysis_levels
+
+  --participant_label:
+    help: The label(s) of the participant(s) that should be analyzed. The label
+          corresponds to sub-<participant_label> from the BIDS spec
+          (so it does not include "sub-"). If this parameter is not
+          provided all subjects should be analyzed. Multiple
+          participants can be specified with a space separated list.
+    nargs: '+'
+
+  --exclude_participant_label:
+    help: The label(s) of the participant(s) that should be excluded. The label
+          corresponds to sub-<participant_label> from the BIDS spec
+          (so it does not include "sub-"). If this parameter is not
+          provided all subjects should be analyzed. Multiple
+          participants can be specified with a space separated list.
+    nargs: '+'
+
+  --derivatives:
+    help: 'Path(s) to a derivatives dataset, for folder(s) that contains multiple derivatives datasets (default: %(default)s) '
+    default: False
+    nargs: '+'
+
+  # custom inputs 
+  --res:
+    help: 'Specify the resampling resolution (e.g. "100" for 1mm) for images, any resolution is supported but limited to isotropic resampling. (default: %(default)s)'
+    default: '100'  # Default to 1 
+
+  --workdir:
+    help: |
+      Folder for storing working files. If not specified, will be in "work/" subfolder 
+      in the output folder. You can also use environment variables when setting the 
+      workdir, e.g. --workdir '$SLURM_TMPDIR'.
+    default: work
+    type: str
+
+singularity:
+    itksnap: 'docker://pyushkevich/itksnap:latest'
+
+plugins.validator.skip: False
+root: results
+workdir: null
