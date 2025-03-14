@@ -35,21 +35,10 @@ work = os.path.expandvars(config["workdir"])
 resolution = float(config['res'])
 
 include: 'rules/preproc.smk'
+include: 'rules/train_model.smk'
 
 rule all:
     input:
-        input1 = inputs["t1w"].expand(bids(
-            root=work,
-            datatype="patches",
-            desc="samples_31_rigid",
-            suffix=".dat",
-            **inputs["t1w"].wildcards
-        )),
-        input2 = inputs["t1w"].expand(bids(
-            root=work,
-            datatype="patches",
-            desc="samples_31_affine",
-            suffix=".dat",
-            **inputs["t1w"].wildcards
-        ))
+        expand("output/patch-{p_size}_batch-{b_size}_LR-{lr}_filter-{filter}_depth-{depth}_convs-{convs}_loss-{loss}/model_log.txt", p_size=PATCH_SIZES, b_size=BATCH_SIZES, lr=LEARNING_RATES, filter=INITIAL_FILTER,depth=DEPTHS,convs=NUM_CONVS, loss= LOSS)
+       
  
