@@ -28,7 +28,7 @@ antspyx = "0.5.3"
 nilearn = "0.10.3"
 
 [tool.poetry.scripts]
-mri_degad_model = "mri_degad_model.run:app.run"
+mri_degad_preprocessing = "mri_degad_preprocessing.run:app.run"
 
 
 [build-system]
