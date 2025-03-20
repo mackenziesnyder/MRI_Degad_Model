@@ -11,6 +11,10 @@ mri_degad_preprocessing {input_dir} {output_dir} participant --use-singularity -
 **Model Training Command**
 
 ```
+cd mri_degad_cnn
+```
+
+```
 snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file}
 ```
 
