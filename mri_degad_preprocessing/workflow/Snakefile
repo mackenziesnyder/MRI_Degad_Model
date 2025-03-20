@@ -226,7 +226,6 @@ rule create_patches:
         n = '5', #sample n randomly augment patches
         angle = '10', #stdev of normal distribution for sampling angle (in degrees)
         frequency = '4500' #sample 1 patch for every n voxels
-
     output:
         patches = bids(
             root=work,

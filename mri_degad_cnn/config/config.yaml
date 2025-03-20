@@ -5,6 +5,9 @@ input_dir:
 output_dir: 
   help: Output directory for the trained model
 
+subject_file:
+  help: List of subjects for training
+  
 # Optional command line arguments with defaults
 patch_size: 32
 batch_size: 256

@@ -3,6 +3,7 @@ configfile: './config/config.yaml'
 # read values from config.yaml with defaults
 output_dir = config["output_dir"]
 patch_dir = config["input_dir"]
+subject_file=config["subject_file"]
 p_size = config["patch_size"]
 b_size = config["batch_size"]
 lr = config["learning_rate"]
@@ -10,6 +11,9 @@ filter_ = config["initial_filter"]
 depth = config["depths"]
 convs = config["num_convolution"]
 loss = config["loss"]
+train_ratio=config["train_ratio"]
+val_ratio=config["val_ratio"]
+test_ratio=config["test_ratio"]
 
 rule all:
     input:
@@ -22,10 +26,11 @@ rule all:
 rule split_test_val_train:
     input: 
         patch_dir=patch_dir
+        subject_file=subject_file
     params:
-        train_ratio=config.get("train_ratio", 0.7),
-        val_ratio=config.get("val_ratio", 0.15),
-        test_ratio=config.get("test_ratio", 0.15)
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio
     output: 
         train=f"{output_dir}/data/train.txt",
         val=f"{output_dir}/data/val.txt",
