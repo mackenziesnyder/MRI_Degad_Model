@@ -103,7 +103,7 @@ rule run_greedy_rigid:
         rigid_mat = bids(
             root=work,
             datatype="greedy",
-            desc="nongad_to_gad",
+            desc="nongad_to_gad_rigid",
             suffix=".mat",
             acq="gad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
@@ -136,7 +136,7 @@ rule apply_registration_rigid:
         rigid_mat = bids(
             root=work,
             datatype="greedy",
-            desc="nongad_to_gad",
+            desc="nongad_to_gad_rigid",
             suffix=".mat",
             acq="gad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
@@ -145,7 +145,83 @@ rule apply_registration_rigid:
         registered_nongad = bids(
             root=work,
             datatype="greedy",
-            desc="nongad_to_gad",
+            desc="nongad_to_gad_rigid",
+            suffix="T1w.nii.gz",
+            acq="nongad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        )
+    container: config["singularity"]["itksnap"]
+    shell:
+        "greedy -d 3 -dof 6 -rf {input.gad_fixed} -rm {input.nongad_moving} {output.registered_nongad} -r {input.rigid_mat}"
+
+# image registration affine
+rule run_greedy_affine:
+    input:
+        nongad_moving = bids(
+            root=work,
+            datatype="resampled",
+            desc="resampled",
+            res=config["res"],
+            suffix="T1w.nii.gz",
+            acq="nongad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        ),
+        gad_fixed = bids(
+            root=work,
+            datatype="resampled",
+            desc="resampled",
+            res=config["res"],
+            suffix="T1w.nii.gz",
+            acq="gad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        )
+    output:
+        rigid_mat = bids(
+            root=work,
+            datatype="greedy",
+            desc="nongad_to_gad_affine",
+            suffix=".mat",
+            acq="gad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        )
+    container: config["singularity"]["itksnap"]
+    shell:
+        "greedy -d 3 -a -dof 12 -m NCC 2x2x2 -i {input.gad_fixed} {input.nongad_moving} -o {output.rigid_mat} -ia-image-centers -n 100x50x0"
+
+# apply registration rigid
+rule apply_registration_affine:
+    input:
+        nongad_moving = bids(
+            root=work,
+            datatype="resampled",
+            desc="resampled",
+            res=config["res"],
+            suffix="T1w.nii.gz",
+            acq="nongad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        ),
+        gad_fixed = bids(
+            root=work,
+            datatype="resampled",
+            desc="resampled",
+            res=config["res"],
+            suffix="T1w.nii.gz",
+            acq="gad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        ),
+        rigid_mat = bids(
+            root=work,
+            datatype="greedy",
+            desc="nongad_to_gad_affine",
+            suffix=".mat",
+            acq="gad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
+        )
+    output:
+        registered_nongad = bids(
+            root=work,
+            datatype="greedy",
+            desc="nongad_to_gad_affine",
             suffix="T1w.nii.gz",
             acq="nongad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
@@ -154,13 +230,13 @@ rule apply_registration_rigid:
     shell:
         "greedy -d 3 -dof 12 -rf {input.gad_fixed} -rm {input.nongad_moving} {output.registered_nongad} -r {input.rigid_mat}"
 
-# normalize non gad with registration applied
+# normalize non gad with rigid registration applied
 rule nongad_zscore_normalization:
     input:
         norm_in = bids(
             root=work,
             datatype="greedy",
-            desc="nongad_to_gad",
+            desc="nongad_to_gad_rigid",
             suffix="T1w.nii.gz",
             acq="nongad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
@@ -240,6 +316,10 @@ rule create_patches:
     container:
         config["singularity"]["itksnap"]
     shell: 'c3d {input.norm_gad} {input.norm_nongad} {input.norm_nongad} -xpa {params.n} {params.angle} -xp {output.patches} {params.radius_vector} {params.frequency}'
+
+if config["qc"]:
+    print(f"..... QC Enabled .....")
+    include: "rules/qc.smk"
 
 rule all:
     input:
