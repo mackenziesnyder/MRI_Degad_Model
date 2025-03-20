@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "mri_degad_model"
+name = "mri_degad_preprocessing"
 version = "0.1.0"
 description = "Model for the MRI-Degad Project"
 readme = "README.md"

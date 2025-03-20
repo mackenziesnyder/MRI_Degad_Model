@@ -1,0 +1,20 @@
+# mandatory arguments
+input_dir: 
+  help: Directory of the patches produced in the mri_degad preprocessing
+
+output_dir: 
+  help: Output directory for the trained model
+
+# Optional command line arguments with defaults
+patch_size: 32
+batch_size: 256
+learning_rate: 0.0005
+initial_filter: 512
+depths: [3, 4]
+num_convolution: 2
+loss: "mae"
+train_ratio: 0.7
+val_ratio: 0.15
+test_ratio: 0.15
+
+    

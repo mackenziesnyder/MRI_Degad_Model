@@ -7,7 +7,7 @@ app = bidsapp.app(
     [
         plugins.SnakemakeBidsApp(Path(__file__).resolve().parent),
         plugins.BidsValidator(),
-        plugins.Version(distribution="mri_degad_model"),
+        plugins.Version(distribution="mri_degad_preprocessing"),
     ]
 )
 

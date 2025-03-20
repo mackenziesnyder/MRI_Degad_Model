@@ -1,0 +1,64 @@
+configfile: './config/config.yaml'
+
+# read values from config.yaml with defaults
+output_dir = config["output_dir"]
+patch_dir = config["input_dir"]
+p_size = config["patch_size"]
+b_size = config["batch_size"]
+lr = config["learning_rate"]
+filter_ = config["initial_filter"]
+depth = config["depths"]
+convs = config["num_convolution"]
+loss = config["loss"]
+
+rule all:
+    input:
+        expand(
+            f"{output_dir}/patch-{p_size}_batch-{b_size}_LR-{lr}_filter-{filter_}_depth_{depth}_convs-{convs}_loss-{loss}/model_log.txt",
+            output_dir=output_dir, p_size=p_size, b_size=b_size, lr=lr, 
+            filter=filter_, depth=depth, convs=convs, loss=loss
+        )
+
+rule split_test_val_train:
+    input: 
+        patch_dir=patch_dir
+    params:
+        train_ratio=config.get("train_ratio", 0.7),
+        val_ratio=config.get("val_ratio", 0.15),
+        test_ratio=config.get("test_ratio", 0.15)
+    output: 
+        train=f"{output_dir}/data/train.txt",
+        val=f"{output_dir}/data/val.txt",
+        test=f"{output_dir}/data/test.txt"
+    script: 'scripts/train_val_test.py'
+
+rule concatenate:
+    input:
+        patch_dir=patch_dir,
+        train=f"{output_dir}/data/train.txt",
+        val=f"{output_dir}/data/val.txt"
+    output: 
+        train_dat=f"{output_dir}/patches_concatenated/training_samples_{p_size}.dat",
+        val_dat=f"{output_dir}/patches_concatenated/validation_samples_{p_size}.dat"
+    script: 'scripts/train_val_test.py'
+
+rule train:
+    input:
+        train_dat=f"{output_dir}/patches_concatenated/training_samples_{p_size}.dat",
+        val_dat=f"{output_dir}/patches_concatenated/validation_samples_{p_size}.dat"
+    threads: 32
+    output:
+        out=f"{output_dir}/patch-{p_size}_batch-{b_size}_LR-{lr}_filter-{filter_}_depth_{depth}_convs-{convs}_loss-{loss}/model_log.txt"
+    shell:
+        """
+        python3 scripts/training_degad_CNN.py \
+        --input {input.train_dat} {input.val_dat} \
+        --patch_size {p_size} \
+        --batch_size {b_size} \
+        --lr {lr} \
+        --ini_filter {filter_} \
+        --depth {depth} \
+        --num_conv {convs} \
+        --loss {loss} \
+        > {output.out}
+        """
