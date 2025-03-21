@@ -311,11 +311,20 @@ rule create_patches:
             acq="gad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
         )
+    log: 
+        bids(
+            root=root,
+            datatype="logs",
+            desc="create_patches",
+            suffix=".txt",
+            acq="gad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
+        )
     resources:    
         mem_mb = 32000    
     container:
         config["singularity"]["itksnap"]
-    shell: 'c3d {input.norm_gad} {input.norm_nongad} {input.norm_nongad} -xpa {params.n} {params.angle} -xp {output.patches} {params.radius_vector} {params.frequency}'
+    shell: 'c3d {input.norm_gad} {input.norm_nongad} {input.norm_nongad} -xpa {params.n} {params.angle} -xp {output.patches} {params.radius_vector} {params.frequency} &> {log}'
 
 if config["qc"]:
     print(f"..... QC Enabled .....")
@@ -323,15 +332,27 @@ if config["qc"]:
 
 rule all:
     input:
-        patches = inputs["t1w"].expand(
-            bids(
+        normalize = inputs["t1w"].expand(
+                norm_out = bids(
                 root=work,
-                datatype="patches",
-                desc="samples_31",
-                suffix=".dat",
+                datatype="normalize",
+                desc="normalize_minmax",
+                suffix="T1w.nii.gz",
+                acq="gad",
+                **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
+            )
+        ),
+        qc=inputs["t1w"].expand(
+            bids(
+                root=root,
+                datatype="prepocessing_qc",
+                desc="qc",
+                suffix=".html",
                 acq="gad",
                 **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
             )
         )
+        if config["qc"]
+        else [],
        
  

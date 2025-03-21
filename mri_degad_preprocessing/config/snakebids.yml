@@ -81,7 +81,7 @@ parse_args:
 
   --qc:
     help: 'Generate *.html files for QC of preprocessing outputs. (default: %(default)s)'
-    dest: "fidqc"
+    dest: "qc"
     action: "store_true"  # Automatically sets to True when flag is used
     default: false
 

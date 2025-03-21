@@ -31,6 +31,7 @@ rule run_preprocessing_qc:
             datatype="prepocessing_qc",
             desc="qc",
             suffix=".html",
-            **inputs["t1w"].wildcards
+            acq="gad",
+                **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
         )
-    script: '../scripts/registration_qc.py
+    script: '../scripts/registration_QC.py'

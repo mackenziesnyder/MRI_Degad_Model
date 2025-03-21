@@ -26,6 +26,7 @@ pandas = [
 ]
 antspyx = "0.5.3"
 nilearn = "0.10.3"
+svgutils = "^0.3.4"
 
 [tool.poetry.scripts]
 mri_degad_preprocessing = "mri_degad_preprocessing.run:app.run"

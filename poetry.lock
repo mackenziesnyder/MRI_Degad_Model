@@ -136,13 +136,13 @@ bidsschematools = ">=0.10"
 
 [[package]]
 name = "bidsschematools"
-version = "1.0.3"
+version = "1.0.4"
 description = "Python tools for working with the BIDS schema."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "bidsschematools-1.0.3-py3-none-any.whl", hash = "sha256:16c574cdb9613b3816979c8e043d3eb55511f87672d718b4e1a1c9d0897d3555"},
-    {file = "bidsschematools-1.0.3.tar.gz", hash = "sha256:b844e18a1917902d129857e74660f589d034da3a88dc9559014856663856bdf7"},
+    {file = "bidsschematools-1.0.4-py3-none-any.whl", hash = "sha256:abc85f0b6a63d9859c8564d0c737ddeaabebfae70d91b93a0bca79eb75a03b43"},
+    {file = "bidsschematools-1.0.4.tar.gz", hash = "sha256:7443c98ab732ed10d16b543b96052181f8f67b0568d6bb14bb50359a74a2eafc"},
 ]
 
 [package.dependencies]
@@ -3165,6 +3165,20 @@ files = [
 ]
 
 [[package]]
+name = "svgutils"
+version = "0.3.4"
+description = "Python SVG editor"
+optional = false
+python-versions = "*"
+files = [
+    {file = "svgutils-0.3.4-py3-none-any.whl", hash = "sha256:4d08524a08126553c1a9bf2639616cf31290adea6fd235a3eb67d77c748abc00"},
+    {file = "svgutils-0.3.4.tar.gz", hash = "sha256:9ef48f44cb1d460a7747dd02694200fda25eb9faf6dea392118def2695e0e053"},
+]
+
+[package.dependencies]
+lxml = "*"
+
+[[package]]
 name = "tabulate"
 version = "0.9.0"
 description = "Pretty-print tabular data"
@@ -3445,4 +3459,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.12"
-content-hash = "b02147d3fd5923389cee869ce8f0ba3bcb98b79c99dd432f349775accda42377"
+content-hash = "ab1526012e6a9b8bfb7c3d0e3927bb500d4dfee32e9c37d8375e7ca6e4e9a4a2"
