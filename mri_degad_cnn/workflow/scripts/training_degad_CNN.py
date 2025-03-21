@@ -2,64 +2,29 @@ import monai
 import shutil
 from monai.transforms import (
     Compose,
-    LoadImaged,
-    RandCropByPosNegLabeld,
-    Spacingd,
-    RandWeightedCrop,
-    RandRotate,
-    RandFlip,
     Rand3DElasticd,
-    Rand3DElastic,
-    RandRotated,
-    LoadImage,
-    EnsureChannelFirstd,
-    Orientationd,
-    EnsureChannelFirst,
-    ScaleIntensityd,
-    RandFlip,
-    ToTensor,
     SpatialPadd,
-    ToTensord,
-    ScaleIntensity,
     RandFlipd)
-import nibabel
-import shutil
-import tqdm
-from torchmetrics import MeanSquaredError
 import time
 from monai.networks.nets import UNet
-from monai.inferers import sliding_window_inference
-from monai.data import CacheDataset, Dataset,PatchDataset, PersistentDataset, SmartCacheDataset, ThreadDataLoader
+from monai.data import CacheDataset
 import torch
 import matplotlib.pyplot as plt
-import tempfile
-import shutil
 import os
-import nibabel
-from glob import glob
-from monai.networks.blocks import Convolution
-from monai.networks.nets import Discriminator, Generator
 from monai.utils import progress_bar
 import torch.nn as nn
 import torchmetrics 
 from pytorchtools import EarlyStopping
 import numpy 
-import torchvision.transforms as transforms
-import random
-from functools import reduce
-from operator import mul
 from torch.utils.data import DataLoader
-
 from torchmetrics import StructuralSimilarityIndexMeasure as SSIM
-
-
 import argparse
 
-def train_model(input_files, patch_size,batch_size, lr,filter_num,depth,num_conv, loss_func):
+def train_model(input_files, patch_size,batch_size, lr,filter_num,depth,num_conv, loss_func, output):
     
     print(f"Training degad CNN with input files: {input_files[0]} {input_files[1]}\npatch_size: {patch_size}\nbatch size: {batch_size}\nlearning rate: {lr}\nnumber of initial filters: {filter_num}\nCNN depth: {depth}\nnumber of convolutions per block: {num_conv}\nloss: {loss_func}")
 
-    output_dir = f"/project/6050199/akhanf/cfmm-bids/data/Lau/degad/snakemake/snakemake_CNN/output/patch-{patch_size}_batch-{batch_size}_LR-{lr}_filter-{filter_num}_depth-{depth}_convs-{num_conv}_loss-{loss_func}/"
+    output_dir = f"{output}/patch-{patch_size}_batch-{batch_size}_LR-{lr}_filter-{filter_num}_depth-{depth}_convs-{num_conv}_loss-{loss_func}/"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
    
@@ -135,7 +100,6 @@ def train_model(input_files, patch_size,batch_size, lr,filter_num,depth,num_conv
     train_loader = DataLoader(train_patches_dataset, batch_size=batch_size, shuffle=False, num_workers=32) 
     val_loader = DataLoader(validate_patches_dataset, batch_size=batch_size, shuffle=False,num_workers=32)
 
-    import time
     learning_rate = float(lr)
     betas = (0.5, 0.999)
     cnn_opt = torch.optim.Adam(CNN_model.parameters(), lr = learning_rate, betas=betas)
@@ -210,7 +174,6 @@ def train_model(input_files, patch_size,batch_size, lr,filter_num,depth,num_conv
             print("Early stopping") 
             break
 
-
     end = time.time()
     time = end - start
     print(time)
@@ -227,110 +190,11 @@ def train_model(input_files, patch_size,batch_size, lr,filter_num,depth,num_conv
     plt.legend()
     plt.savefig(f'{output_dir}/lossfunction.png')
 
-
     CNN_model.load_state_dict(torch.load(f'{output_dir}/checkpoint.pt'))
     CNN_model.eval()
 
-    # running inference 
-    test_gad_t1= sorted(glob('/project/6050199/akhanf/cfmm-bids/data/Lau/degad/derivatives/passing_dataset/sub-P*/*rescaled_T1w.nii.gz'))[-1:] #TODO: MOVE PASSINGDATASET INSIDE SNAKEMAKE
-    # gad images who's corresponding nongad images underwent a rigid transform
-    test_nongad_t1= sorted(glob('/project/6050199/akhanf/cfmm-bids/data/Lau/degad/derivatives/passing_dataset/sub-P*/*nongad_normalized_fcm.nii.gz'))[-1:] # nongad images which underwent a rigid transform and underwent fcm normalization
-    test_files = [{"image": gad_name, "label": nongad_name} for gad_name, nongad_name in zip(test_gad_t1,test_nongad_t1)] #creates list of dictionaries, with gad and nongad images labelled
-
-
-    inference_transforms = Compose( #loading full image
-        [
-            LoadImaged(keys=["image", "label"]),
-            EnsureChannelFirstd(keys=["image", "label"])])
-
-
-    infer_ds = Dataset(data=test_files, transform=inference_transforms) 
-    infer_loader = DataLoader(infer_ds, batch_size=1, shuffle=True) #using pytorch's dataloader
-
-
-
-    # In[ ]:
-
-
-    degad_imgs = []
-    gad_infer_imgs = []
-    nongad_infer_imgs = []
-    for infer_imgs in infer_loader:
-        gad_infer_imgs.append(infer_imgs["image"])
-        nongad_infer_imgs.append(infer_imgs["label"])
-        output_degad_img = sliding_window_inference(inputs = infer_imgs["image"].to('cpu'), roi_size = dims_tuple, sw_batch_size= 5, predictor = CNN_model.to('cpu'), overlap = 0.25, mode = "gaussian", sw_device= 'cpu', device = 'cpu', progress = True )
-        degad_imgs.append(output_degad_img)
-
-
-    # In[ ]:
-
-
-    for i in range(len(degad_imgs)): #looping thru number of output files
-        degad_img =degad_imgs[i][0][0] # reshaping to exclude batch and channels (only one channel)
-        gad_image= nibabel.load(test_files[i]["image"]) # getting original gad image back to compare to 
-        gad_image_file = test_files[i]["image"]
-        print(gad_image_file)
-        sub = os.path.basename(gad_image_file).split("_")[0]
-        degad_name = f'{sub}_acq-degad_T1w.nii.gz'
-        degad_file = nibabel.Nifti1Image(degad_img.detach().numpy()*100, affine= gad_image.affine,header= gad_image.header) # with same header as inference gad 
-        output_dir_test = f'{output_dir}/test'
-        os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True)# save in bids format
-        output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
-        nibabel.save(degad_file,output_path) 
-
-
-    # In[ ]:
-
-
-    import random
-    ## generating random whole brain slices
-    fig, axes = plt.subplots(8, 4,figsize=(10,25))
-    plt.suptitle('Whole brain slices: Gad, NonGad, Degad,Subtraction map')
-
-    for i in range (1,33,4):
-        plt.subplot(8, 4, i)
-        x = random.randint(80, 190)
-        plt.imshow(gad_infer_imgs[0][0, 0,40:210 ,40:150, x].cpu().data.numpy(), cmap ="gray")
-
-        plt.subplot(8, 4, i+1)
-        plt.imshow(nongad_infer_imgs[0][0, 0, 40:210 , 40:150, x].cpu().data.numpy(), "gray")
-
-        plt.subplot(8, 4, i+2)
-        plt.imshow(degad_imgs[0][0, 0, 40:210,40:150, x].cpu().data.numpy(), "gray")
-    
-        plt.subplot(8, 4, i+3)
-        noise_vector = degad_imgs[0][0,0,:,:,:] - nongad_infer_imgs[0][0,0,:,:,:] 
-        #pos values are where model overestimated intensities and neg values are where the model underestimated
-        plt.imshow(noise_vector[40:210,40:150, x].cpu().data.numpy(), "seismic",vmin=-1,vmax=1)
-        plt.colorbar()
-    plt.savefig(f'{output_dir}/test/figure_whole_brain.png')
-
-
-    # In[ ]:
-
-
-    #generating random 32x32 slices
-    fig, axes = plt.subplots(8, 4,figsize=(10,20))
-    plt.suptitle('Patches: Gad, NonGad, Degad,subtraction map')
-
-    for i in range (1,33,4):
-
-        x = random.randint(40, 190)
-        y = random.randint(40, 190)
-        z = random.randint(40, 190)
-        plt.subplot(8, 4, i)
-        plt.imshow(gad_infer_imgs[0][0, 0, x:x+32,y:y+32 ,50].cpu().data.numpy(), cmap ="gray")
-        plt.subplot(8, 4, i+1)
-        plt.imshow(nongad_infer_imgs[0][0, 0, x:x+32,y:y+32 ,50].cpu().data.numpy(), "gray")
-        plt.subplot(8, 4, i+2)
-        plt.imshow(degad_imgs[0][0, 0, x:x+32,y:y+32,50].cpu().data.numpy(), "gray")
-        plt.subplot(8, 4, i+3)
-        noise_vector = degad_imgs[0][0,0,:,:,:] - nongad_infer_imgs[0][0,0,:,:,:] 
-        #pos values are where model overestimated intensities and neg values are where the model underestimated
-        plt.imshow(noise_vector[x:x+32,y:y+32,50].cpu().data.numpy(), "seismic",vmin=-1,vmax=1)
-        plt.colorbar()
-
-    plt.savefig(f'{output_dir}/test/figure_32_patches.png')  
+    model_path = f'{output_dir}/checkpoint.pt'
+    return model_path
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
@@ -342,6 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--depth", type=int, required=True, help="Depth of U-Net.")
     parser.add_argument("--num_conv", type=int, required=True, help="Number of convolutions in each layer.")
     parser.add_argument("--loss", required=True, help="Type of loss function to apply: mae, ssim or both.")
+    parser.add_argument("--ouput_dir", required=True, help="Output directory")
 
     args = parser.parse_args()
     input_files = args.input
@@ -352,8 +217,9 @@ if __name__ == "__main__":
     depth= args.depth
     num_conv=args.num_conv
     loss=args.loss
+    output=args.output_dir
 
-    train_model(input_files,patch_size, batch_size,lr,filter_num,depth,num_conv, loss)
+    train_model(input_files,patch_size, batch_size,lr,filter_num,depth,num_conv, loss, output)
 
 
 

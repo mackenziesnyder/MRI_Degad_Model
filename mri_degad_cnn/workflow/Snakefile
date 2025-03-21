@@ -65,5 +65,5 @@ rule train:
         --depth {depth} \
         --num_conv {convs} \
         --loss {loss} \
-        > {output.out}
+        --output {output_dir}
         """
