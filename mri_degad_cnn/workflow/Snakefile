@@ -13,7 +13,6 @@ convs = config["num_convolution"]
 loss = config["loss"]
 train_ratio=config["train_ratio"]
 val_ratio=config["val_ratio"]
-test_ratio=config["test_ratio"]
 
 rule all:
     input:
@@ -25,17 +24,14 @@ rule all:
 
 rule split_test_val_train:
     input: 
-        patch_dir=patch_dir
         subject_file=subject_file
     params:
         train_ratio=train_ratio,
         val_ratio=val_ratio,
-        test_ratio=test_ratio
     output: 
         train=f"{output_dir}/data/train.txt",
         val=f"{output_dir}/data/val.txt",
-        test=f"{output_dir}/data/test.txt"
-    script: 'scripts/train_val_test.py'
+    script: 'scripts/train_val_split.py'
 
 rule concatenate:
     input:
