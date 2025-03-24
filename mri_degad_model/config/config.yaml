@@ -8,15 +8,29 @@ output_dir:
 subject_file:
   help: List of subjects for training
 
+model:
+  help: CNN or GAN
+
 # Optional command line arguments with defaults
 patch_size: 32
 batch_size: 256
 learning_rate: 0.0005
+train_ratio: 0.8
+val_ratio: 0.2
+
+# specific to CNN
 initial_filter: 512
 depths: [3, 4]
 num_convolution: 2
 loss: "mae"
-train_ratio: 0.8
-val_ratio: 0.2
+
+# specific to GAN
+filterG: 32
+filterD: 32
+depthG: 3
+convsG: 2
+convsD: 2
+steps: 4
+
 
     

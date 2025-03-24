@@ -1,6 +1,6 @@
 # MRI_Degad_Model
 
-CNN model for the MRI Degad program
+Model for the MRI Degad program
 
 **Preprocessing Command (Bids):**
 
@@ -11,11 +11,11 @@ mri_degad_preprocessing {input_dir} {output_dir} participant --use-singularity -
 **Model Training Command**
 
 ```
-cd mri_degad_cnn
+cd mri_degad_model
 ```
 
 ```
-snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file}
+snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file} model={desired model}
 ```
 
 to customize model parameters, add ```{designated model parameter}={changed value}```
@@ -25,17 +25,27 @@ to customize model parameters, add ```{designated model parameter}={changed valu
 - patch_size: 32
 - batch_size: 256
 - learning_rate: 0.0005
+- train_ratio: 0.8
+- val_ratio: 0.2
+
+CNN Specifc:
 - initial_filter: 512
 - depths: [3, 4]
 - num_convolution: 2
 - loss: "mae"
-- train_ratio: 0.8
-- val_ratio: 0.2
+
+GAN Specifc:
+- filterG = 32
+- filterD = 32
+- depthG = 3
+- convsG = 2
+- convsD = 2
+- steps = 4
 
 *Example with customized model parameters:*
 
 ```
-snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file} num_convolution=3 
+snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file} model=CNN num_convolution=3 
 ```
 
 **Important Note:**

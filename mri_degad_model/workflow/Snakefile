@@ -7,20 +7,38 @@ subject_file=config["subject_file"]
 p_size = config["patch_size"]
 b_size = config["batch_size"]
 lr = config["learning_rate"]
+train_ratio=config["train_ratio"]
+val_ratio=config["val_ratio"]
+
+# CNN specific
 filter_ = config["initial_filter"]
 depth = config["depths"]
 convs = config["num_convolution"]
 loss = config["loss"]
-train_ratio=config["train_ratio"]
-val_ratio=config["val_ratio"]
+
+# GAN specific 
+filterG = config["filterG"]
+filterD = config["filterD"]
+depthG = config["depthG"]
+convsG = config["convsG"]
+convsD = config["convsD"]
+steps = config["steps"]
 
 rule all:
     input:
+        # for CNN
         expand(
             f"{output_dir}/patch-{p_size}_batch-{b_size}_LR-{lr}_filter-{filter_}_depth_{depth}_convs-{convs}_loss-{loss}/model_log.txt",
             output_dir=output_dir, p_size=p_size, b_size=b_size, lr=lr, 
             filter=filter_, depth=depth, convs=convs, loss=loss
-        )
+        ) if config["model"] == "CNN" else
+        
+        # for GAD
+        expand(
+            f"{output_dir}/patch-{p_size}_batch-{b_size}_LR-{lr}_filterG-{filterG}_filterD-{filterD}_depthG-{depthG}_convsG-{convsG}_convsD-{convsD}_stepsD-{steps}/model_log.txt",
+            output_dir=output_dir, p_size=p_size, b_size=b_size, lr=lr, 
+            filterG=filterG, filterD=filterD, depthG=depthG, convsG=convsG, convsD=convsD, steps=steps
+        ) if config["model"] == "GAN" else []
 
 rule split_test_val_train:
     input: 
@@ -43,7 +61,7 @@ rule concatenate:
         val_dat=f"{output_dir}/patches_concatenated/validation_samples_{p_size}.dat"
     script: 'scripts/train_val_test.py'
 
-rule train:
+rule train_CNN:
     input:
         train_dat=f"{output_dir}/patches_concatenated/training_samples_{p_size}.dat",
         val_dat=f"{output_dir}/patches_concatenated/validation_samples_{p_size}.dat"
@@ -61,5 +79,28 @@ rule train:
         --depth {depth} \
         --num_conv {convs} \
         --loss {loss} \
+        --output {output_dir}
+        """
+
+rule train_GAN:
+    input:
+        train_dat=f"{output_dir}/patches_concatenated/training_samples_{p_size}.dat",
+        val_dat=f"{output_dir}/patches_concatenated/validation_samples_{p_size}.dat"
+    threads: 32
+    output:
+        out=f"{output_dir}/patch-{p_size}_batch-{b_size}_LR-{lr}_filterG-{filterG}_filterD-{filterD}_depthG-{depthG}_convsG-{convsG}_convsD-{convsD}_stepsD-{steps}/model_log.txt"
+    shell:
+        """
+        python3 scripts/training_degad_GAN.py \
+        --input {input.train_dat} {input.val_dat} \
+        --patch_size {p_size} \
+        --batch_size {b_size} \
+        --lr {lr} \
+        --ini_filter_G {filterG} \
+        --ini_filter_D {filterD} \
+        --depth_G {depthG} \
+        --num_conv_G {convsG} \
+        --num_conv_D {convsD} \
+        --train_steps_D {steps} \
         --output {output_dir}
         """
