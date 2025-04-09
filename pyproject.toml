@@ -32,6 +32,9 @@ svgutils = "^0.3.4"
 mri_degad_preprocessing = "mri_degad_preprocessing.run:app.run"
 
 
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
