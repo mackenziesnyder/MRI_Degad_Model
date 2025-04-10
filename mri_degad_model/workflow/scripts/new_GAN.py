@@ -31,12 +31,16 @@ def train_GAN(input_dir,patch_size, batch_size,lr, filter_num_G, filter_num_D, d
     pin_memory = torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    subjects = sorted(glob.glob(os.path.join(input_dir, "sub-*")))
+    # subject folders 
+    subjects = sorted(glob.glob(os.path.join(input_dir, "work", "sub-*")))
+    print("subjects: ", subjects)
     data_dicts = []
     # create a dictonary of matching gad and nogad files
     for sub in subjects:
-        gad_images = glob.glob(os.path.join(sub, "work", "ses-pre", "anat", "*_gad*_T1w.nii.gz"))
-        nogad_images = glob.glob(os.path.join(sub, "work", "ses-pre", "anat", "*nongad*_T1w.nii.gz"))
+        print("sub: ", sub)
+        gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
+        print("gad imag", gad_images)
+        nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize","*acq-nongad*_T1w.nii.gz"))
         if gad_images and nogad_images:
             data_dicts.append({"image": gad_images[0], "label": nogad_images[0]})
     print("Loaded", len(data_dicts), "paired samples.")
