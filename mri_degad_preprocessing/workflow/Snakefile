@@ -317,9 +317,9 @@ rule gad_minmax_normalization:
 #         config["singularity"]["itksnap"]
 #     shell: 'c3d {input.norm_gad} {input.norm_nongad} {input.norm_nongad} -xpa {params.n} {params.angle} -xp {output.patches} {params.radius_vector} {params.frequency}'
 
-# if config["qc"]:
-#     print(f"..... QC Enabled .....")
-#     include: "rules/qc.smk"
+if config["qc"]:
+    print(f"..... QC Enabled .....")
+    include: "rules/qc.smk"
 
 # rule all:
 #     input:
