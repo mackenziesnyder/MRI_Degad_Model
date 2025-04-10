@@ -348,13 +348,21 @@ rule gad_minmax_normalization:
 
 rule all:
     input:
-        norm_out = bids(
+        norm_out_gad = bids(
             root=work,
             datatype="normalize",
             desc="normalize_minmax",
             suffix="T1w.nii.gz",
             acq="gad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
+        ),
+        norm_out_nongad = bids(
+            root=work,
+            datatype="normalize",
+            desc="normalized_zscore",
+            suffix="T1w.nii.gz",
+            acq="nongad",
+            **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
         ),
         qc=inputs["t1w"].expand(
             bids(
@@ -369,4 +377,3 @@ rule all:
         if config["qc"]
         else [],
        
- 
