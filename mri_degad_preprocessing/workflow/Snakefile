@@ -278,73 +278,9 @@ rule gad_minmax_normalization:
     params: norm_method="minmax"
     script: 'scripts/normalize.py'
 
-# create patches for model inputs 
-# rule create_patches:
-#     input:
-#         norm_nongad = bids(
-#             root=work,
-#             datatype="normalize",
-#             desc="normalized_zscore",
-#             suffix="T1w.nii.gz",
-#             acq="nongad",
-#             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
-#         ),
-#         norm_gad = bids(
-#             root=work,
-#             datatype="normalize",
-#             desc="normalize_minmax",
-#             suffix="T1w.nii.gz",
-#             acq="gad",
-#             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
-#         )
-#     params:
-#         radius_vector = '31x31x31', #patch dimensions will be (x*2)+1 voxels
-#         n = '5', #sample n randomly augment patches
-#         angle = '10', #stdev of normal distribution for sampling angle (in degrees)
-#         frequency = '4500' #sample 1 patch for every n voxels
-#     output:
-#         patches = bids(
-#             root=work,
-#             datatype="patches",
-#             desc="samples_31",
-#             suffix=".dat",
-#             acq="gad",
-#             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
-#         )
-#     resources:    
-#         mem_mb = 32000    
-#     container:
-#         config["singularity"]["itksnap"]
-#     shell: 'c3d {input.norm_gad} {input.norm_nongad} {input.norm_nongad} -xpa {params.n} {params.angle} -xp {output.patches} {params.radius_vector} {params.frequency}'
-
 if config["qc"]:
     print(f"..... QC Enabled .....")
     include: "rules/qc.smk"
-
-# rule all:
-#     input:
-#         patches = inputs["t1w"].expand(
-#             bids(
-#                 root=work,
-#                 datatype="patches",
-#                 desc="samples_31",
-#                 suffix=".dat",
-#                 acq="gad",
-#                 **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
-#             )
-#         ),
-#         qc=inputs["t1w"].expand(
-#             bids(
-#                 root=root,
-#                 datatype="prepocessing_qc",
-#                 desc="qc",
-#                 suffix=".html",
-#                 acq="gad",
-#                 **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
-#             )
-#         )
-#         if config["qc"]
-#         else [],
 
 rule all:
     input:
