@@ -36,22 +36,20 @@ class SaveImagePath(MapTransform):
         super().__init__(keys)
         
     def __call__(self, data):
-        # Storing the file path separately in the 'image_filepath' key
         data['image_filepath'] = data['image']
         return data
     
 def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, output_direct):
     
-    output_dir = f"{output_direct}/patch-{patch_size}_batch-{batch_size}_LR-{lr}_filter-{filter}_depth-{depth}_loss-{loss_func}/"
+    output_dir = f"{output_direct}/image-{image_size}_batch-{batch_size}_LR-{lr}_filter-{filter}_depth-{depth}_loss-{loss_func}/"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     pin_memory = torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # creates a dictionary of pairs of image file paths (str)
-
-    input_dir = os.path.expanduser("~/graham/scratch/degad_preprocessed_data")
+    
+    input_dir = input_dir[0]
+    # creates dictionary of matching image and label paths
     work_dir = os.path.join(input_dir, "work")
     subject_dirs = glob.glob(os.path.join(work_dir, "sub-*"))
     subjects = []
@@ -61,29 +59,23 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     data_dicts = []
     for sub in subjects:   
         gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-gad*_T1w.nii.gz"))
-        print("Found gad images:", gad_images)
         nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
-        print("Found nogad images:", nogad_images)
         if gad_images and nogad_images:
             data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0]})
     print("Loaded", len(data_dicts), "paired samples.")
     
+    # split into train, val, test
     train_val, test = train_test_split(data_dicts, test_size=0.15, random_state=42)
-    train, val = train_test_split(train_val, test_size=0.176, random_state=42) # 0.176 ≈ 15% of the full data
+    train, val = train_test_split(train_val, test_size=0.176, random_state=42) # 0.176 = 15% of the full data
     print(f"Train: {len(train)}, Val: {len(val)}, Test: {len(test)}")
     
-
-    # using transformations from original code 
-
-    # set size of image to patch size (patch_size, patch_size, patch_size)
+    # set size of image
     dims_tuple = (image_size,)*3
     print("dims_tuple: ", dims_tuple)
 
     # train tranforms 
     train_transforms = Compose([
-        LoadImaged(
-            keys=["image", "label"], 
-        ),  # load image from the file path 
+        LoadImaged(keys=["image", "label"]),  # load image from the file path 
         EnsureChannelFirstd(keys=["image", "label"]), # ensure this is [C, H, W, (D)]
         ScaleIntensityd(keys=["image"]), # scales the intensity from 0-1
         Rand3DElasticd(
@@ -100,30 +92,16 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         ToTensord(keys=["image", "label"])
     ])
 
-    # view size of image and label for training
-    sample_train = train_transforms(train[0])
-    print("Test image shape:", sample_train["image"].shape)
-    print("Test label shape:", sample_train["label"].shape)
-    # want to validate and test with whole images 
+    # validate 
     val_transforms = Compose([
         SaveImagePath(keys=["image"]),
-        LoadImaged(
-            keys=["image", "label"]
-        ),  # load image
+        LoadImaged(keys=["image", "label"]),  # load image
         EnsureChannelFirstd(keys=["image", "label"]),
         ScaleIntensityd(keys=["image"]),
         SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), # ensure data is the same size
         CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
         ToTensord(keys=["image", "label"])
     ])
-    sample_val = val_transforms(val[0])
-    print("Val image shape:", sample_val["image"].shape)
-    print("Val label shape:", sample_val["label"].shape)
-    sample_test = val_transforms(test[0])
-    print("Test image shape:", sample_test["image"].shape)
-    print("Test label shape:", sample_test["label"].shape)
-    print("Image file path:", sample_test["image_filepath"])
-
 
     train_ds = Dataset(data=train, transform=train_transforms)
     val_ds = Dataset(data=val, transform=val_transforms)
@@ -164,9 +142,9 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas=betas)
     patience = 22 # epochs it will take for training to terminate if no improvement
     early_stopping = EarlyStopping(patience=patience, verbose=True, path = f'{output_dir}/checkpoint.pt')
-    max_epochs = 250
+    max_epochs = 1
 
-    loss = torch.nn.L1Loss().to(device)
+    loss = torch.nn.L1Loss().to(device) # mae
     train_losses = [float('inf')]
     val_losses = [float('inf')]
     test_loss = 0
@@ -221,7 +199,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     total_time = end - start
     print("time for training and validation: ", total_time)
     
-    
+    # visualize model stats 
     with open (f'{output_dir}/model_stats.txt', 'w') as file:  
         file.write(f'Training time: {total_time}\n') 
         file.write(f'Number of trainable parameters: {trainable_params}\n')
