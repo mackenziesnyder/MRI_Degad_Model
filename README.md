@@ -1,6 +1,7 @@
 # MRI_Degad_Model
 
 Model for the MRI Degad program
+To learn more about the MRI Degad program, please visit the workflow repository: https://github.com/mackenziesnyder/MRI-DeGad
 
 **Preprocessing:**
 
