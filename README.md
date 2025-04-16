@@ -2,50 +2,46 @@
 
 Model for the MRI Degad program
 
-**Preprocessing Command (Bids):**
+**Preprocessing:**
+
+The preprocessing pipeline utilizes snakemake with snakebids. In order for the preprocessing pipeline to work, the input data must be in standard bids formatting.
+
+Mri degad preprocessing python package dependencies are managed with Poetry, which you’ll need installed on your machine. You can find instructions on the poetry website: https://python-poetry.org/docs/.
+
+Setting up the environment:
 
 ```
-mri_degad_preprocessing {input_dir} {output_dir} participant --use-singularity --cores all 
+git clone https://github.com/mackenziesnyder/MRI_Degad_Model.git
+cd mri_degad_preprocessing
+poetry shell 
+poetry install 
 ```
 
-**Model Training Command**
+To run the preprocessing pipeline, run the following command: 
+```
+mri_degad_preprocessing {input_dir} {output_dir} participant --cores all 
+```
+
+**Model Training**
+
+This model was trained using resources provided by ComputeCanada with SLURM.
+To train the model with SLURM on ComputeCanada, ensure the cloned repository is located on graham, ssh into graham, and run the following commands:
 
 ```
 cd mri_degad_model
+module load python/3.11.5
 ```
 
+Create a virtual environment and install packages
 ```
-snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file} model={desired model}
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt 
 ```
 
-to customize model parameters, add ```{designated model parameter}={changed value}```
-
-*defaults:*
-
-- patch_size: 32
-- batch_size: 256
-- learning_rate: 0.0005
-- train_ratio: 0.8
-- val_ratio: 0.2
-
-CNN Specifc:
-- initial_filter: 512
-- depths: [3, 4]
-- num_convolution: 2
-- loss: "mae"
-
-GAN Specifc:
-- filterG = 32
-- filterD = 32
-- depthG = 3
-- convsG = 2
-- convsD = 2
-- steps = 4
-
-*Example with customized model parameters:*
-
+Run the following bash script, if you want to change any of the model parameters or resources, that can all be done in the run.sh script. 
 ```
-snakemake --config input_dir={output dir of preprocessing} output_dir={your chosen output dir} subject_file={path to subject file} model=CNN num_convolution=3 
+sbatch run.sh 
 ```
 
 **Important Note:**
