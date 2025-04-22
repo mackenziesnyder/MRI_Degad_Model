@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=ctb-akhanf
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
-#SBATCH --gpu=l40s:1
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=32G
+#SBATCH --gpu=v100:1
 #SBATCH --time=1-17:00:00
 
 module load python/3.11.5

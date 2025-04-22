@@ -40,9 +40,17 @@ source venv/bin/activate
 pip install -r requirements.txt 
 ```
 
-Run the following bash script, if you want to change any of the model parameters or resources, that can all be done in the run.sh script. 
+Run the following bash script, if you want to change any of the model parameters or resources, that can all be done in the designated run script. 
+
+run scripts to choose from:
+- *run_CNN.sh* - trains on whole images
+- *run_CNN_patches.sh* - trains on patches of whole images
+- *run_GAN.sh* - trains on whole images
+- *run_GAN_patches.sh* - trains on patches of whole images
+
+
 ```
-sbatch run.sh 
+sbatch {desired run script}
 ```
 
 **Test new models with the MRI-Degad Program:**
