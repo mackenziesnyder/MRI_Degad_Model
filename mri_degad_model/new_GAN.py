@@ -3,89 +3,137 @@ import os
 import glob
 import nibabel as nib
 from sklearn.model_selection import train_test_split
+
 import monai
 from monai.transforms import (
     Compose,
+    LoadImaged,
+    EnsureChannelFirstd,
     Rand3DElasticd,
+    ScaleIntensityd,
     SpatialPadd,
+    CenterSpatialCropd,
     RandFlipd,
-    RandSpatialCropd,
-    ToTensord
+    ToTensord,
+    MapTransform
 )
 from monai.data import Dataset, DataLoader
 from monai.networks.nets import UNet
 import torch.nn as nn
 import time 
+
 from monai.utils import progress_bar
+
 import matplotlib.pyplot as plt
 from monai.inferers import sliding_window_inference
 from pathlib import Path
 import argparse
 
-def train_GAN(input_dir,patch_size, batch_size,lr, filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct):
+def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct):
     
-    output_dir = f"{output_direct}/patch-{patch_size}_batch-{batch_size}_LR-{lr}_filter_G-{filter_num_G}_filter_D-{filter_num_D}_depth_G-{depth_G}_train_steps_d_{train_steps_d}_loss_func_{loss_func}/"
+    output_dir = f"output/image_size-{image_size}_batch-{batch_size}_LR-{lr}_filter_G-{filter_num_G}_filter_D-{filter_num_D}_depth_G-{depth_G}_train_steps_d_{train_steps_d}_loss_func_{loss_func}/"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     pin_memory = torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # subject folders 
-    subjects = sorted(glob.glob(os.path.join(input_dir, "work", "sub-*")))
-    print("subjects: ", subjects)
+    work_dir = os.path.join(input_dir, "work")
+    subject_dirs = glob.glob(os.path.join(work_dir, "sub-*"))
+
+    subjects = []
+    for directory in subject_dirs:
+        if os.path.isdir(directory): 
+            subjects.append(directory)
+
     data_dicts = []
-    # create a dictonary of matching gad and nogad files
-    for sub in subjects:
-        print("sub: ", sub)
-        gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
-        print("gad imag", gad_images)
-        nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize","*acq-nongad*_T1w.nii.gz"))
+    for sub in subjects:   
+        gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-gad*_T1w.nii.gz"))
+        print("Found gad images:", gad_images)
+        
+        nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
+        print("Found nogad images:", nogad_images)
+        
         if gad_images and nogad_images:
-            data_dicts.append({"image": gad_images[0], "label": nogad_images[0]})
+            data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0]})
+
     print("Loaded", len(data_dicts), "paired samples.")
 
-    train, test = train_test_split(data_dicts, test_size=0.2, random_state=42)
-    print(f"Train: {len(train)}, Test: {len(test)}")
+    # 70% train, 15% val, 15% test 
+    train_val, test = train_test_split(data_dicts, test_size=0.15, random_state=42)
 
-    # set size of image to patch size (patch_size, patch_size, patch_size)
-    dims_tuple = (patch_size,)*3
-    # want to train with patches
+    # 0.176 ≈ 15% of the full data
+    train, val = train_test_split(train_val, test_size=0.176, random_state=42)
+
+    print(f"Train: {len(train)}, Val: {len(val)}, Test: {len(test)}")
+
+    dims_tuple = (image_size,)*3
+    print("dims_tuple: ", dims_tuple)
+
+    # train tranforms 
     train_transforms = Compose([
-        SpatialPadd(keys = ("image","label"), spatial_size = dims_tuple), #ensures all data is around the same size
-        Rand3DElasticd(keys = ("image","label"), sigma_range = (0.5,1), magnitude_range = (0.1, 0.4), prob=0.4, shear_range=(0.1, -0.05, 0.0, 0.0, 0.0, 0.0), scale_range=0.5, padding_mode= "zeros"),
-        RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=1),
-        RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=0),
-        RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=2),
-        RandSpatialCropd(keys=["image", "label"], roi_size=patch_size, random_center=True, random_size=False),
+        LoadImaged(
+            keys=["image", "label"], 
+        ),  # load image from the file path 
+        EnsureChannelFirstd(keys=["image", "label"]), # ensure this is [C, H, W, (D)]
+        ScaleIntensityd(keys=["image"]), # scales the intensity from 0-1
+        Rand3DElasticd(
+            keys = ("image","label"), 
+            sigma_range = (0.5,1), 
+            magnitude_range = (0.1, 0.4), 
+            prob=0.4, 
+            shear_range=(0.1, -0.05, 0.0, 0.0, 0.0, 0.0),
+            scale_range=0.5, padding_mode= "zeros"
+        ),
+        RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=(0,1,2)),
+        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple), #ensure all images are (1,256,256,256) if too small
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
         ToTensord(keys=["image", "label"])
     ])
+
+    # view size of image and label for training
+    sample_train = train_transforms(train[0])
+    print("Test image shape:", sample_train["image"].shape)
+    print("Test label shape:", sample_train["label"].shape)
+
     # want to validate and test with whole images 
     test_transforms = Compose([
-        SpatialPadd(keys = ("image","label"),spatial_size = dims_tuple),
+        SaveImagePath(keys=["image"]),
+        LoadImaged(
+            keys=["image", "label"]
+        ),  # load image
+        EnsureChannelFirstd(keys=["image", "label"]),
+        ScaleIntensityd(keys=["image"]),
+        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), # ensure data is the same size
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
         ToTensord(keys=["image", "label"])
     ])
+
+    sample_test = test_transforms(test[0])
+    print("Test image shape:", sample_test["image"].shape)
+    print("Test label shape:", sample_test["label"].shape)
+    print("Image file path:", sample_test["image_filepath"])
 
     train_ds = Dataset(data=train, transform=train_transforms)
     test_ds = Dataset(data=test, transform=test_transforms)
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=False, num_workers=32, pin_memory=pin_memory)
-    test_loader = DataLoader(test_ds, batch_size=1, num_workers=2, pin_memory=pin_memory)
 
-    # if depth is 3, and filter is 16, channels = 16, 32, 64
+    # training, validating, testing of whole data so use a batch size of 1
+    train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, pin_memory=pin_memory)
+    test_loader = DataLoader(test_ds, batch_size=1, pin_memory=pin_memory)
+
     channels = []
     for i in range(depth_G):
-        channels.append(filter_num_G)
-        filter_num_G *=2
+        channels.append(filter)
+        filter *=2
     print("channels: ", channels)
-    # if depth is 3, strides = 2, 2, 1 
     strides = []
-    for i in range(depth_G - 1):
+    for i in range(depth_G-1):
         strides.append(2)
-    strides.append(1)
     print("strides: ", strides)
+
     # define model 
     gen_model = UNet(
-        dimensions=3,
+        spatial_dims=3,
         in_channels=1,
         out_channels=1,
         channels=channels,
@@ -94,6 +142,7 @@ def train_GAN(input_dir,patch_size, batch_size,lr, filter_num_G, filter_num_D, d
         dropout=0.2,
         norm='BATCH'
     ).apply(monai.networks.normal_init).to(device)
+
     trainable_params_gen = sum(p.numel() for p in gen_model.parameters() if p.requires_grad)
 
     disc_model = GANDiscriminator(filter_num_D).apply(monai.networks.normal_init).to(device)
@@ -118,40 +167,52 @@ def train_GAN(input_dir,patch_size, batch_size,lr, filter_num_G, filter_num_D, d
         print(f"\nEpoch {epoch + 1}/{max_epochs}")
         gen_model.train()
         disc_model.train()
+        
         progress_bar(
             index = epoch + 1,
             count = max_epochs, 
             desc = f"epoch {epoch + 1}, avg gen loss: {epoch_loss_values[-1]:.4f}, avg disc loss: {disc_loss_values[-1]:.4f}",
             newline=True
         )
+
         average_train_loss_gen = 0
         average_train_loss_disc = 0 
         for i, batch in enumerate(train_loader):
             gad_images, nongad_images  =batch["image"].to(device), batch["label"].to(device)
             gen_opt.zero_grad()
+
             # apply generator model on gad images 
             degad_images = gen_model(gad_images)
+
             # apply discriminator model 
             disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1)) # getting disc losses when fed fake images
+
             gen_loss = GeneratorLoss(nongad_images, degad_images, disc_fake_pred,device) # getting generator losses
             gen_loss.backward()# computes gradient(derivative) of current tensor, automatically frees part of greaph that creates loss
             gen_opt.step() # updates parameters to minimize loss
             average_train_loss_gen += gen_loss.item()
+
             for _ in range(disc_train_steps):
-                gad_images, nongad_images = gad_images.clone().detach(), nongad_images.clone().detach() # need to recall it for each iteration to avoid error message of backpropagation through a graph a second time after gradients have been freed             
-                degad_images = gen_model(gad_images) # feeding CNN with gad images             
-                disc_opt.zero_grad() # resetting gradient for discrminator to 0           
+                gad_images, nongad_images = gad_images.clone().detach(), nongad_images.clone().detach() # need to recall it for each iteration to avoid error message of backpropagation through a graph a second time after gradients have been freed
+                
+                degad_images = gen_model(gad_images) # feeding CNN with gad images
+                
+                disc_opt.zero_grad() # resetting gradient for discrminator to 0
+                
                 disc_real_pred = disc_model(torch.cat([gad_images, nongad_images], dim=1))
-                disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1))             
+                disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1)) 
+                
                 disc_loss = DiscriminatorLoss(disc_real_pred,disc_fake_pred,device)
                 disc_loss.backward() #initializes back propagation to compute gradient of current tensors 
                 disc_opt.step() # updates parameters to minimize loss
                 average_train_loss_disc += disc_loss.item() # taking sum of disc loss for the number of steps for this batch
+
         average_train_loss_gen /= gen_training_steps # epoch loss is the total loss by the end of that epoch divided by the number of steps
         epoch_loss_values.append(average_train_loss_gen) #updates the loss value for that epoch
         average_train_loss_disc /= disc_training_steps# average disc epoch loss is the total loss divided by the number of discriminator steps
         disc_loss_values.append(average_train_loss_disc) # av
         gen_model.eval()
+
     torch.save(gen_model.state_dict(), f"{output_dir}/trained_generator.pt")
     torch.save(disc_model.state_dict(), f"{output_dir}/trained_discriminator.pt")
     end = time.time()
@@ -179,28 +240,45 @@ def train_GAN(input_dir,patch_size, batch_size,lr, filter_num_G, filter_num_D, d
     output_dir_test = Path(output_dir) / "test"
     output_dir_test.mkdir(parents=True, exist_ok=True)
     with torch.no_grad():
-        for i, batch in enumerate(test_loader):
+        for i, batch in enumerate(test_loader):      
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
-            # Sliding window inference for large 3D volumes
-            degad_images = sliding_window_inference(gad_images, patch_size, 1, gen_model)
+            gad_paths = batch["image_filepath"]
+            degad_images = sliding_window_inference(gad_images, image_size, 1, gen_model)
+            degad_images = degad_images[:, :, :255, :255, :255]
+
             loss_value = loss(degad_images, nogad_images)
+
             test_loss += loss_value.item()
-            # Save degad images as NIfTI
-            for i in range(degad_images.shape[0]):
-                gad_path = batch["image_meta_dict"]["filename_or_obj"][i]
+
+            # to save the output files 
+            # shape[0] gives number of images 
+            for j in range(degad_images.shape[0]):
+                gad_path = gad_paths[j] # test dictionary image file name
+                print(gad_path)
                 gad_nib = nib.load(gad_path)
                 sub = Path(gad_path).name.split("_")[0]
                 degad_name = f"{sub}_acq-degad_T1w.nii.gz"
+                
                 degad_nib = nib.Nifti1Image(
-                    degad_images[i, 0].detach().numpy()*100,
+                    degad_images[j, 0].detach().numpy()*100, 
                     affine=gad_nib.affine,
-                    header=gad_nib.header,
+                    header=gad_nib.header
                 )
+
                 os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True) # save in bids format
                 output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
                 nib.save(degad_nib, output_path)
-    print(f"Test Loss: {test_loss / len(test_loader):.4f}")
+    print(f"Test Loss: {test_loss / len(test_loader):.4f}")   
 
+class SaveImagePath(MapTransform):
+    def __init__(self, keys):
+        super().__init__(keys)
+        
+    def __call__(self, data):
+        # Storing the file path separately in the 'image_filepath' key
+        data['image_filepath'] = data['image']
+        return data
+    
 class GANDiscriminator(nn.Module):
     def __init__(self, ini_filters):
         super().__init__()
@@ -278,7 +356,7 @@ def DiscriminatorLoss(real_preds, fake_preds,device):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
     parser.add_argument("--input", nargs='+', required=True, help="Path to the training and validation data, in that order")
-    parser.add_argument("--patch_size", type=int, required=True, help="Patch size for training.")
+    parser.add_argument("--image_size", type=int, required=True, help="Patch size for training.")
     parser.add_argument("--batch_size", type=int, required=True, help="Batch size for training.")
     parser.add_argument("--lr", type=float, required=True, help="Learning rate for training.")
     parser.add_argument("--filterG", type=int, required=True, help="Number of filters in initial layer of generator.")
@@ -289,7 +367,7 @@ if __name__ == "__main__":
     parser.add_argument("--trainD", required=True, help="Number of steps being applied to discriminator.")
     args = parser.parse_args()
     input_dir = args.input
-    patch_size = args.patch_size
+    image_size = args.image_size
     batch_size = args.batch_size
     lr = args.lr
     filter_num_G = args.filterG
@@ -298,4 +376,4 @@ if __name__ == "__main__":
     train_steps_d = args.trainD
     loss_func=args.loss
     output_direct=args.output_dir
-    train_GAN(input_dir,patch_size, batch_size,lr,filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct)
+    train_GAN(input_dir,image_size, batch_size,lr,filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct)
