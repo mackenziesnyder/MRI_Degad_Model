@@ -148,7 +148,7 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
     betas = (0.5, 0.999)
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas=betas)
     best_model_path = f"{output_dir}/best_model.pt"
-    max_epochs = 2
+    max_epochs = 250
     patience = 10
 
     loss = torch.nn.L1Loss().to(device)

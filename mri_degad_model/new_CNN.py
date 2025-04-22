@@ -107,9 +107,9 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     test_ds = Dataset(data=test, transform=val_transforms)
 
     # training, validating, testing of whole data so use a batch size of 1
-    train_loader = DataLoader(train_ds, batch_size=len(train), shuffle=True, num_workers=2, pin_memory=pin_memory)
-    val_loader = DataLoader(val_ds, batch_size=len(train), num_workers=2, pin_memory=pin_memory)
-    test_loader = DataLoader(test_ds, batch_size=len(train), num_workers=2, pin_memory=pin_memory)
+    train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, pin_memory=pin_memory)
+    val_loader = DataLoader(val_ds, batch_size=1, pin_memory=pin_memory)
+    test_loader = DataLoader(test_ds, batch_size=1, pin_memory=pin_memory)
     
     channels = []
     for i in range(depth):
@@ -140,7 +140,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     betas = (0.5, 0.999)
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas=betas)
     patience = 22 # epochs it will take for training to terminate if no improvement
-    max_epochs = 1
+    max_epochs = 250
     best_model_path = f"{output_dir}/best_model.pt"
 
     loss = torch.nn.L1Loss().to(device) # mae
