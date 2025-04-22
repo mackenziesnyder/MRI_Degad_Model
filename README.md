@@ -45,8 +45,7 @@ Run the following bash script, if you want to change any of the model parameters
 sbatch run.sh 
 ```
 
-**Important Note:**
+**Test new models with the MRI-Degad Program:**
 
-To test the model you create through this program, please use data the model was not trained on. If you are running this model training end-to-end, please seperate your data before hand into model data and test data. A recommended  split is 85% model data and 15% test data. Once split, this code will take care of splitting the train and validation data. 
 
 To test newly created models, please upload the model to OSF, switch the model link in https://github.com/mackenziesnyder/MRI-DeGad, and run the program in MRI-Degad. 
