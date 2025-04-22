@@ -7,5 +7,5 @@
 
 module load python/3.11.5
 source ./venv/bin/activate
-python3 new_CNN.py --input ../degad_preprocessed_data/ --image_size 255 --batch_size 42 --lr 0.0001 --filter 64 --depth 4 --loss mae --output_dir ./output
+python3 CNN_whole_images.py --input ../degad_preprocessed_data/ --image_size 256 --batch_size 1 --lr 0.0001 --filter 64 --depth 4 --loss mae --output_dir ./output
 

@@ -15,6 +15,7 @@ from monai.transforms import (
     CenterSpatialCropd,
     RandFlipd,
     ToTensord,
+    GridPatchd,
     MapTransform
 )
 from monai.data import Dataset, DataLoader
@@ -29,9 +30,9 @@ from monai.inferers import sliding_window_inference
 from pathlib import Path
 import argparse
 
-def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct):
+def train_GAN(input_dir,image_size, patch_size, batch_size,lr, filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct):
     
-    output_dir = f"output/image_size-{image_size}_batch-{batch_size}_LR-{lr}_filter_G-{filter_num_G}_filter_D-{filter_num_D}_depth_G-{depth_G}_train_steps_d_{train_steps_d}_loss_func_{loss_func}/"
+    output_dir = f"output/image_size-{image_size}_patch_size={patch_size}_batch-{batch_size}_LR-{lr}_filter_G-{filter_num_G}_filter_D-{filter_num_D}_depth_G-{depth_G}_train_steps_d_{train_steps_d}_loss_func_{loss_func}/"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -59,16 +60,15 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
 
     print("Loaded", len(data_dicts), "paired samples.")
 
-    # 70% train, 15% val, 15% test 
-    train_val, test = train_test_split(data_dicts, test_size=0.15, random_state=42)
+    # 85% train, 15% test 
+    train, test = train_test_split(data_dicts, test_size=0.15, random_state=42)
 
-    # 0.176 ≈ 15% of the full data
-    train, val = train_test_split(train_val, test_size=0.176, random_state=42)
+    print(f"Train: {len(train)}, Test: {len(test)}")
 
-    print(f"Train: {len(train)}, Val: {len(val)}, Test: {len(test)}")
-
-    dims_tuple = (image_size,)*3
-    print("dims_tuple: ", dims_tuple)
+    dims_tuple_image = (image_size,)*3
+    print("dims_tuple: ", dims_tuple_image)
+    dims_tuple_patches = (patch_size,)*3
+    print("dims_tuple: ", dims_tuple_patches)
 
     # train tranforms 
     train_transforms = Compose([
@@ -86,8 +86,14 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
             scale_range=0.5, padding_mode= "zeros"
         ),
         RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=(0,1,2)),
-        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple), #ensure all images are (1,256,256,256) if too small
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
+        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple_image), #ensure all images are (1,256,256,256) if too small
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple_image), # ensure all images are (1,256,256,256) if too big
+        GridPatchd(
+            keys=("image", "label"),
+            patch_size=(dims_tuple_patches),
+            offset=(0, 0, 0),
+            stride=(dims_tuple_patches) # Non-overlapping
+        ),
         ToTensord(keys=["image", "label"])
     ])
 
@@ -104,8 +110,8 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
         ),  # load image
         EnsureChannelFirstd(keys=["image", "label"]),
         ScaleIntensityd(keys=["image"]),
-        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), # ensure data is the same size
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
+        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple_image), # ensure data is the same size
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple_image), # ensure all images are (1,256,256,256) if too big
         ToTensord(keys=["image", "label"])
     ])
 
@@ -118,7 +124,7 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
     test_ds = Dataset(data=test, transform=test_transforms)
 
     # training, validating, testing of whole data so use a batch size of 1
-    train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, pin_memory=pin_memory)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=32, pin_memory=pin_memory)
     test_loader = DataLoader(test_ds, batch_size=1, pin_memory=pin_memory)
 
     channels = []
@@ -150,14 +156,15 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
 
     learning_rate = lr
     betas = (0.5, 0.999)
+
     gen_opt = torch.optim.Adam(gen_model.parameters(), lr = learning_rate, betas=betas)
     disc_opt = torch.optim.Adam(disc_model.parameters(), lr = learning_rate, betas=betas)
+
     epoch_loss_values = [float('inf')] # list of generator  loss calculated at the end of each epoch
     disc_loss_values = [float('inf')] # list of discriminator loss values calculated at end of each epoch
     disc_train_steps = int(train_steps_d)# number of times to loop thru discriminator for each batch
-    gen_training_steps = int(train_loader / batch_size) # batch_size is a tunable param
-    disc_training_steps = disc_train_steps * gen_training_steps # number of validation steps per epoch
-    max_epochs = 250
+    max_epochs = 2
+
     loss = torch.nn.L1Loss().to(device)
     test_loss = 0
 
@@ -177,41 +184,50 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
 
         average_train_loss_gen = 0
         average_train_loss_disc = 0 
+        gen_steps = 0
+        disc_steps = 0
         for i, batch in enumerate(train_loader):
             gad_images, nongad_images  =batch["image"].to(device), batch["label"].to(device)
-            gen_opt.zero_grad()
+            
+            B, P, C, D, H, W = gad_images.shape
 
-            # apply generator model on gad images 
-            degad_images = gen_model(gad_images)
+            for patch_idx in range(P):
+                patch_gad = gad_images[:, patch_idx]   # [B, C, D, H, W]
+                patch_nongad = nongad_images[:, patch_idx]
+            
+                gen_opt.zero_grad()
+                # apply generator model on gad images 
+                degad_images = gen_model(gad_images)
+                # apply discriminator model 
+                disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1)) # getting disc losses when fed fake images
 
-            # apply discriminator model 
-            disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1)) # getting disc losses when fed fake images
+                gen_loss = GeneratorLoss(nongad_images, degad_images, disc_fake_pred,device) # getting generator losses
+                gen_loss.backward()# computes gradient(derivative) of current tensor, automatically frees part of greaph that creates loss
+                gen_opt.step() # updates parameters to minimize loss
+                average_train_loss_gen += gen_loss.item()
+                gen_steps += 1
 
-            gen_loss = GeneratorLoss(nongad_images, degad_images, disc_fake_pred,device) # getting generator losses
-            gen_loss.backward()# computes gradient(derivative) of current tensor, automatically frees part of greaph that creates loss
-            gen_opt.step() # updates parameters to minimize loss
-            average_train_loss_gen += gen_loss.item()
+                for _ in range(disc_train_steps):
+                    gad_images, nongad_images = gad_images.clone().detach(), nongad_images.clone().detach() # need to recall it for each iteration to avoid error message of backpropagation through a graph a second time after gradients have been freed
+                    
+                    degad_images = gen_model(gad_images) # feeding CNN with gad images
+                    
+                    disc_opt.zero_grad() # resetting gradient for discrminator to 0     
+                    disc_real_pred = disc_model(torch.cat([gad_images, nongad_images], dim=1))
+                    disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1)) 
+                    
+                    disc_loss = DiscriminatorLoss(disc_real_pred,disc_fake_pred,device)
+                    disc_loss.backward() #initializes back propagation to compute gradient of current tensors 
+                    disc_opt.step() # updates parameters to minimize loss
+                    average_train_loss_disc += disc_loss.item() # taking sum of disc loss for the number of steps for this batch
+                    disc_steps += 1
 
-            for _ in range(disc_train_steps):
-                gad_images, nongad_images = gad_images.clone().detach(), nongad_images.clone().detach() # need to recall it for each iteration to avoid error message of backpropagation through a graph a second time after gradients have been freed
-                
-                degad_images = gen_model(gad_images) # feeding CNN with gad images
-                
-                disc_opt.zero_grad() # resetting gradient for discrminator to 0
-                
-                disc_real_pred = disc_model(torch.cat([gad_images, nongad_images], dim=1))
-                disc_fake_pred = disc_model(torch.cat([gad_images, degad_images], dim=1)) 
-                
-                disc_loss = DiscriminatorLoss(disc_real_pred,disc_fake_pred,device)
-                disc_loss.backward() #initializes back propagation to compute gradient of current tensors 
-                disc_opt.step() # updates parameters to minimize loss
-                average_train_loss_disc += disc_loss.item() # taking sum of disc loss for the number of steps for this batch
-
-        average_train_loss_gen /= gen_training_steps # epoch loss is the total loss by the end of that epoch divided by the number of steps
-        epoch_loss_values.append(average_train_loss_gen) #updates the loss value for that epoch
-        average_train_loss_disc /= disc_training_steps# average disc epoch loss is the total loss divided by the number of discriminator steps
-        disc_loss_values.append(average_train_loss_disc) # av
+        average_train_loss_gen /= gen_steps
+        epoch_loss_values.append(average_train_loss_gen)
+        average_train_loss_disc /= disc_steps
+        disc_loss_values.append(average_train_loss_disc)
         gen_model.eval()
+
 
     torch.save(gen_model.state_dict(), f"{output_dir}/trained_generator.pt")
     torch.save(disc_model.state_dict(), f"{output_dir}/trained_discriminator.pt")
@@ -237,14 +253,17 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
 
     gen_model.load_state_dict(torch.load(f'{output_dir}/trained_generator.pt'))
     gen_model.eval()
+
     output_dir_test = Path(output_dir) / "test"
     output_dir_test.mkdir(parents=True, exist_ok=True)
+
+
     with torch.no_grad():
         for i, batch in enumerate(test_loader):      
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             gad_paths = batch["image_filepath"]
             degad_images = sliding_window_inference(gad_images, image_size, 1, gen_model)
-            degad_images = degad_images[:, :, :255, :255, :255]
+            degad_images = degad_images[:, :, :image_size, :image_size, :image_size]
 
             loss_value = loss(degad_images, nogad_images)
 
@@ -268,7 +287,8 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
                 os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True) # save in bids format
                 output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
                 nib.save(degad_nib, output_path)
-    print(f"Test Loss: {test_loss / len(test_loader):.4f}")   
+        
+    print(f"Test Loss: {test_loss / len(test_loader):.4f}")
 
 class SaveImagePath(MapTransform):
     def __init__(self, keys):
@@ -356,7 +376,8 @@ def DiscriminatorLoss(real_preds, fake_preds,device):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
     parser.add_argument("--input", nargs='+', required=True, help="Path to the training and validation data, in that order")
-    parser.add_argument("--image_size", type=int, required=True, help="Patch size for training.")
+    parser.add_argument("--image_size", type=int, required=True, help="Image size for training.")
+    parser.add_argument("--patch_size", type=int, required=True, help="Patch size for training.")
     parser.add_argument("--batch_size", type=int, required=True, help="Batch size for training.")
     parser.add_argument("--lr", type=float, required=True, help="Learning rate for training.")
     parser.add_argument("--filterG", type=int, required=True, help="Number of filters in initial layer of generator.")
@@ -368,6 +389,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     input_dir = args.input
     image_size = args.image_size
+    patch_size = args.patch_size
     batch_size = args.batch_size
     lr = args.lr
     filter_num_G = args.filterG
@@ -376,4 +398,4 @@ if __name__ == "__main__":
     train_steps_d = args.trainD
     loss_func=args.loss
     output_direct=args.output_dir
-    train_GAN(input_dir,image_size, batch_size,lr,filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct)
+    train_GAN(input_dir,image_size, patch_size, batch_size,lr,filter_num_G, filter_num_D, depth_G, train_steps_d, loss_func, output_direct)
