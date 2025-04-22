@@ -21,10 +21,9 @@ from monai.data import Dataset, DataLoader
 from monai.networks.nets import UNet
 
 import time
-from pytorchtools import EarlyStopping
 import numpy as np
 
-from monai.utils import progress_bar, set_determinism
+from monai.utils import progress_bar
 
 import matplotlib.pyplot as plt
 from monai.inferers import sliding_window_inference
@@ -141,8 +140,8 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     betas = (0.5, 0.999)
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas=betas)
     patience = 22 # epochs it will take for training to terminate if no improvement
-    early_stopping = EarlyStopping(patience=patience, verbose=True, path = f'{output_dir}/checkpoint.pt')
     max_epochs = 1
+    best_model_path = f"{output_dir}/best_model.pt"
 
     loss = torch.nn.L1Loss().to(device) # mae
     train_losses = [float('inf')]
@@ -190,33 +189,50 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 avg_val_loss += val_loss.item()        
             avg_val_loss /= len(val_loader) #producing average val loss for this epoch
             val_losses.append(avg_val_loss) 
-            early_stopping(avg_val_loss, model) # early stopping keeps track of last best model
-        if early_stopping.early_stop: # stops early if validation loss has not improved for {patience} number of epochs
-            print("Early stopping, saving model") 
-            break
-    torch.save(model.state_dict(), f"{output_dir}/final_model.pt")
+            
+            if avg_val_loss < best_val_loss:
+                print(f"Validation loss improved from {best_val_loss:.4f} to {avg_val_loss:.4f}. Saving model.")
+                best_val_loss = avg_val_loss
+                torch.save(model.state_dict(), best_model_path)
+            else:
+                epochs_without_improvement += 1
+                print(f"No improvement in validation loss. Best remains {best_val_loss:.4f}.")
+
+            if epochs_without_improvement >= patience:
+                print(f"Early stopping at epoch {epoch+1} due to no improvement in validation loss.")
+                break
+
     end = time.time()
     total_time = end - start
     print("time for training and validation: ", total_time)
     
-    # visualize model stats 
     with open (f'{output_dir}/model_stats.txt', 'w') as file:  
-        file.write(f'Training time: {total_time}\n') 
+        file.write(f'Training time: {total_time:.2f} seconds\n') 
         file.write(f'Number of trainable parameters: {trainable_params}\n')
-  
-    plt.figure(figsize=(12,5))
+
+        if len(train_losses) > patience:
+            file.write(f'Training loss (epoch {-patience}): {train_losses[-patience]:.4f}\n')
+        else:
+            file.write(f'Training loss (last epoch): {train_losses[-1]:.4f}\n')
+
+        file.write(f'Validation loss (best): {best_val_loss:.4f}\n')
+        
+    epochs = list(range(1, len(train_losses) + 1))
+    plt.figure(figsize=(12, 5))
+    plt.plot(epochs, train_losses, label="Training Loss")
+    plt.plot(epochs, val_losses, label="Validation Loss")
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
-    plt.plot(list(range(len(train_losses))), train_losses, label="Training Loss")
-    plt.plot(list(range(len(val_losses))),val_losses , label="Validation Loss")
-    plt.grid(True, "both", "both")
     plt.title("Training and Validation Loss")
+    plt.grid(True)
     plt.legend()
+    plt.tight_layout()
     plt.savefig(f'{output_dir}/lossfunction.png')
     plt.close()
 
-    model.load_state_dict(torch.load(f'{output_dir}/checkpoint.pt'))
+    model.load_state_dict(torch.load(f'{output_dir}/best_model.pt'))
     model.eval()
+
     output_dir_test = Path(output_dir) / "test"
     output_dir_test.mkdir(parents=True, exist_ok=True)
     with torch.no_grad():
