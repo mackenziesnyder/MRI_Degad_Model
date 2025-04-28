@@ -194,6 +194,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 print(f"Validation loss improved from {best_val_loss:.4f} to {avg_val_loss:.4f}. Saving model.")
                 best_val_loss = avg_val_loss
                 torch.save(model.state_dict(), best_model_path)
+                epochs_without_improvement = 0 # reset counter
             else:
                 epochs_without_improvement += 1
                 print(f"No improvement in validation loss. Best remains {best_val_loss:.4f}.")
