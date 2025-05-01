@@ -38,27 +38,22 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
     pin_memory = torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    input_dir = input_dir[0]
+    # creates dictionary of matching image and label paths
     work_dir = os.path.join(input_dir, "work")
     subject_dirs = glob.glob(os.path.join(work_dir, "sub-*"))
-
     subjects = []
     for directory in subject_dirs:
         if os.path.isdir(directory): 
             subjects.append(directory)
-
     data_dicts = []
     for sub in subjects:   
         gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-gad*_T1w.nii.gz"))
-        print("Found gad images:", gad_images)
-        
         nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
-        print("Found nogad images:", nogad_images)
-        
         if gad_images and nogad_images:
             data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0]})
-
     print("Loaded", len(data_dicts), "paired samples.")
-
+    
     # 85% train, 15% test 
     train, test = train_test_split(data_dicts, test_size=0.15, random_state=42)
 
@@ -120,8 +115,8 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
 
     channels = []
     for i in range(depth_G):
-        channels.append(filter)
-        filter *=2
+        channels.append(filter_num_G)
+        filter_num_G *=2
     print("channels: ", channels)
     strides = []
     for i in range(depth_G-1):
@@ -152,7 +147,7 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
     epoch_loss_values = [float('inf')] # list of generator  loss calculated at the end of each epoch
     disc_loss_values = [float('inf')] # list of discriminator loss values calculated at end of each epoch
     disc_train_steps = int(train_steps_d)# number of times to loop thru discriminator for each batch
-    gen_training_steps = int(train_loader / batch_size) # batch_size is a tunable param
+    gen_training_steps = int(len(train_loader) / batch_size) # batch_size is a tunable param
     disc_training_steps = disc_train_steps * gen_training_steps # number of validation steps per epoch
     max_epochs = 250
     loss = torch.nn.L1Loss().to(device)
@@ -213,8 +208,8 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
     torch.save(gen_model.state_dict(), f"{output_dir}/trained_generator.pt")
     torch.save(disc_model.state_dict(), f"{output_dir}/trained_discriminator.pt")
     end = time.time()
-    time = end - start
-    print("time for training: ", time)
+    total_time = end - start
+    print("time for training: ", total_time)
 
     with open (f'{output_dir}/model_stats.txt', 'w') as file:  
         file.write(f'Training time: {time}\n') 

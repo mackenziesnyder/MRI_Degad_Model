@@ -146,6 +146,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     loss = torch.nn.L1Loss().to(device) # mae
     train_losses = [float('inf')]
     val_losses = [float('inf')]
+    best_val_loss = float('inf')
     test_loss = 0
 
     start = time.time()
@@ -265,7 +266,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
     parser.add_argument("--input", nargs='+', required=True, help="Path to the training and validation data, in that order")
-    parser.add_argument("--image_size", type=int, required=True, help="Patch size for training.")
+    parser.add_argument("--image_size", type=int, required=True, help="Image size for training.")
     parser.add_argument("--batch_size", type=int, required=True, help="Batch size for training.")
     parser.add_argument("--lr", type=float, required=True, help="Learning rate for training.")
     parser.add_argument("--filter", type=int, required=True, help="Number of filters in initial layer.")
