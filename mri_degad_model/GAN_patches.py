@@ -251,7 +251,7 @@ def train_GAN(input_dir,image_size, patch_size, batch_size,lr, filter_num_G, fil
     plt.savefig(f'{output_dir}/lossfunction.png')
     plt.close()
 
-    gen_model.load_state_dict(torch.load(f'{output_dir}/trained_generator.pt'))
+    gen_model.load_state_dict(torch.load(f'{output_dir}/trained_generator.pt', map_location=torch.device('cpu')))
     gen_model.eval()
 
     output_dir_test = Path(output_dir) / "test"

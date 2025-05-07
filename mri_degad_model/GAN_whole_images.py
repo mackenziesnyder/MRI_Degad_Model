@@ -227,40 +227,58 @@ def train_GAN(input_dir,image_size, batch_size,lr, filter_num_G, filter_num_D, d
     plt.savefig(f'{output_dir}/lossfunction.png')
     plt.close()
 
-    gen_model.load_state_dict(torch.load(f'{output_dir}/trained_generator.pt'))
+    try:
+        gen_model.load_state_dict(torch.load(f'{output_dir}/trained_generator.pt', map_location=torch.device('cpu')))
+        gen_model.eval()
+    except Exception as e:
+        print(f"Model loading failed: {e}")
     gen_model.eval()
+    print(f"Number of batches in test_loader: {len(test_loader)}")
+
     output_dir_test = Path(output_dir) / "test"
     output_dir_test.mkdir(parents=True, exist_ok=True)
+    print(f"Output directory for test results: {output_dir_test}")
+
     with torch.no_grad():
         for i, batch in enumerate(test_loader):      
+            print(f"\nProcessing batch {i + 1}/{len(test_loader)}")
+            print(f"Batch keys: {batch.keys()}")
+
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             gad_paths = batch["image_filepath"]
+            
             degad_images = sliding_window_inference(gad_images, image_size, 1, gen_model)
+            print(f"degad_images shape before cropping: {degad_images.shape}")
+
             degad_images = degad_images[:, :, :image_size, :image_size, :image_size]
+            print(f"degad_images shape after cropping: {degad_images.shape}")
 
             loss_value = loss(degad_images, nogad_images)
-
+            print(f"Loss for batch {i + 1}: {loss_value.item():.4f}")
             test_loss += loss_value.item()
 
-            # to save the output files 
-            # shape[0] gives number of images 
+            # Save output files
             for j in range(degad_images.shape[0]):
-                gad_path = gad_paths[j] # test dictionary image file name
-                print(gad_path)
+                gad_path = gad_paths[j]
+                print(f"Processing image: {gad_path}")
+
                 gad_nib = nib.load(gad_path)
                 sub = Path(gad_path).name.split("_")[0]
                 degad_name = f"{sub}_acq-degad_T1w.nii.gz"
-                
+
                 degad_nib = nib.Nifti1Image(
-                    degad_images[j, 0].detach().numpy()*100, 
+                    degad_images[j, 0].detach().cpu().numpy() * 100,  # added .cpu() for safety
                     affine=gad_nib.affine,
                     header=gad_nib.header
                 )
 
-                os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True) # save in bids format
-                output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
+                save_dir = output_dir_test / "bids" / sub / "ses-pre" / "anat"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                output_path = save_dir / degad_name
                 nib.save(degad_nib, output_path)
-    print(f"Test Loss: {test_loss / len(test_loader):.4f}")   
+                print(f"Saved degad image to: {output_path}")
+        
+    print(f"\nFinal Test Loss: {test_loss / len(test_loader):.4f}") 
 
 class SaveImagePath(MapTransform):
     def __init__(self, keys):

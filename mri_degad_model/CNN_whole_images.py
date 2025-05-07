@@ -232,7 +232,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     plt.savefig(f'{output_dir}/lossfunction.png')
     plt.close()
 
-    model.load_state_dict(torch.load(f'{output_dir}/best_model.pt'))
+    model.load_state_dict(torch.load(f'{output_dir}/best_model.pt', map_location=torch.device('cpu')))
     model.eval()
 
     output_dir_test = Path(output_dir) / "test"
