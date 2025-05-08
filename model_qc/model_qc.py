@@ -3,7 +3,22 @@ import nibabel as nib
 import argparse
 import glob
 import numpy as np
+from svg_transforms import extract_svg
+import matplotlib.pyplot as plt
+from nilearn import plotting
 
+plot_args = dict(
+    cmap=plt.cm.gray,
+    draw_cross=False,
+)
+# Helper to generate inline SVG string
+def get_svg_image(fg_img, bg_img=None, display_mode="z", cut_coords=[0]):
+    display = plotting.plot_anat(bg_img or fg_img, display_mode=display_mode, cut_coords=cut_coords, **plot_args)
+    if bg_img is not None:
+        display.add_overlay(fg_img, alpha=0.7)
+    tmp_svg = extract_svg(display, dpi=300)  # You should define extract_svg
+    display.close()
+    return tmp_svg
 
 def output_html_qc_file(original_image_bids, degad_images, output_path): 
     
@@ -50,6 +65,7 @@ def output_html_qc_file(original_image_bids, degad_images, output_path):
         f.write("<h3 style='font-size:42px'>Model QC</h3>")
 
         for triplet in data_dicts:
+            
             degad_image = triplet["degad_image"]
             gad_image = triplet["gad_image"]
             nogad_image = triplet["nogad_image"]
@@ -78,6 +94,11 @@ def output_html_qc_file(original_image_bids, degad_images, output_path):
                 affine=gad_img.affine,
             )
 
+            # Generate SVGS
+            svg_gad = get_svg_image(gad_img)
+            svg_nogad = get_svg_image(nogad_img)
+            svg_degad = get_svg_image(degad_img)
+
             f.write(f"""
                 <div style="display:flex; justify-content:space-around; margin:40px;">
                     <div>
@@ -90,7 +111,7 @@ def output_html_qc_file(original_image_bids, degad_images, output_path):
                     </div>
                     <div>
                         <h4>De-Gad Image</h4>
-                        <p>{degad_image}</p>
+                        <p>{degad_img}</p>
                     </div>
                 </div>
                 <hr style="height:2px; background-color:black; margin:30px 0;">
