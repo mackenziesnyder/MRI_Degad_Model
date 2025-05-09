@@ -37,6 +37,14 @@ class SaveImagePath(MapTransform):
     def __call__(self, data):
         data['image_filepath'] = data['image']
         return data
+
+class SaveImageSize(MapTransform):
+    def __init__(self, keys):
+        super().__init__(keys)
+        
+    def __call__(self, data):
+        data['image_size'] = data.shape
+        return data
     
 def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, output_direct):
     
@@ -60,7 +68,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-gad*_T1w.nii.gz"))
         nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
         if gad_images and nogad_images:
-            data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0]})
+            data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0], "image_shape": gad_images[0]})
     print("Loaded", len(data_dicts), "paired samples.")
     
     # split into train, val, test
@@ -94,11 +102,11 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     # validate 
     val_transforms = Compose([
         SaveImagePath(keys=["image"]),
+        SaveImageSize(keys=["image"]),
         LoadImaged(keys=["image", "label"]),  # load image
         EnsureChannelFirstd(keys=["image", "label"]),
         ScaleIntensityd(keys=["image"]),
         SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), # ensure data is the same size
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
         ToTensord(keys=["image", "label"])
     ])
 
@@ -140,7 +148,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     betas = (0.5, 0.999)
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas=betas)
     patience = 22 # epochs it will take for training to terminate if no improvement
-    max_epochs = 250
+    max_epochs = 150
     best_model_path = f"{output_dir}/best_model.pt"
 
     loss = torch.nn.L1Loss().to(device) # mae
@@ -195,7 +203,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 print(f"Validation loss improved from {best_val_loss:.4f} to {avg_val_loss:.4f}. Saving model.")
                 best_val_loss = avg_val_loss
                 torch.save(model.state_dict(), best_model_path)
-                epochs_without_improvement = 0 # reset counter
+                epochs_without_improvement = 0
             else:
                 epochs_without_improvement += 1
                 print(f"No improvement in validation loss. Best remains {best_val_loss:.4f}.")
@@ -241,10 +249,14 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         for i, batch in enumerate(test_loader):      
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             gad_paths = batch["image_filepath"]
+            gad_image_original_size = batch["image_size"]
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
-            degad_images = degad_images[:, :, :image_size, :image_size, :image_size]  
             loss_value = loss(degad_images, nogad_images)
             test_loss += loss_value.item()
+
+            resize = Resize(spatial_size=gad_image_original_size, mode="trilinear", align_corners=True)
+            degad_images = resize(degad_images)
+
             # to save the output files 
             # shape[0] gives number of images 
             for j in range(degad_images.shape[0]):
@@ -253,20 +265,25 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 gad_nib = nib.load(gad_path)
                 sub = Path(gad_path).name.split("_")[0]
                 degad_name = f"{sub}_acq-degad_T1w.nii.gz"             
-                degad_nib = nib.Nifti1Image(
-                    degad_images[j, 0].detach().numpy()*100, 
-                    affine=gad_nib.affine,
-                    header=gad_nib.header
-                )
+                
+                # Convert predicted output to NumPy
+                data_np = degad_images[j, 0].detach().cpu().numpy()
+
+                # Create prediction Nifti in transformed space
+                pred_nib = nib.Nifti1Image(data_np, affine=np.eye(4))  # temporary identity affine
+
+                # Resample prediction to match original GAD image (both shape & affine)
+                resampled_nib = resample_from_to(pred_nib, gad_nib)
+            
                 os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True) # save in bids format
                 output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
-                nib.save(degad_nib, output_path)
+                nib.save(resampled_nib, output_path)
         
     print(f"Test Loss: {test_loss / len(test_loader):.4f}")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
     parser.add_argument("--input", nargs='+', required=True, help="Path to the training and validation data, in that order")
-    parser.add_argument("--image_size", type=int, required=True, help="Image size for training.")
+    parser.add_argument("--image_size", type=int, required=True, help="Patch size for training.")
     parser.add_argument("--batch_size", type=int, required=True, help="Batch size for training.")
     parser.add_argument("--lr", type=float, required=True, help="Learning rate for training.")
     parser.add_argument("--filter", type=int, required=True, help="Number of filters in initial layer.")
