@@ -38,13 +38,6 @@ class SaveImagePath(MapTransform):
         data['image_filepath'] = data['image']
         return data
 
-class SaveImageSize(MapTransform):
-    def __init__(self, keys):
-        super().__init__(keys)
-        
-    def __call__(self, data):
-        data['image_size'] = data.shape
-        return data
     
 def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, output_direct):
     
@@ -76,13 +69,15 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     train, val = train_test_split(train_val, test_size=0.176, random_state=42) # 0.176 = 15% of the full data
     print(f"Train: {len(train)}, Val: {len(val)}, Test: {len(test)}")
     
-    # set size of image
+    # set size of image to patch size (patch_size, patch_size, patch_size)
     dims_tuple = (image_size,)*3
     print("dims_tuple: ", dims_tuple)
 
-    # train tranforms 
+  # train tranforms 
     train_transforms = Compose([
-        LoadImaged(keys=["image", "label"]),  # load image from the file path 
+        LoadImaged(
+            keys=["image", "label"], 
+        ),  # load image from the file path 
         EnsureChannelFirstd(keys=["image", "label"]), # ensure this is [C, H, W, (D)]
         ScaleIntensityd(keys=["image"]), # scales the intensity from 0-1
         Rand3DElasticd(
@@ -99,14 +94,21 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         ToTensord(keys=["image", "label"])
     ])
 
-    # validate 
+    # view size of image and label for training
+    sample_train = train_transforms(train[0])
+    print("Test image shape:", sample_train["image"].shape)
+    print("Test label shape:", sample_train["label"].shape)
+
+    # want to validate and test with whole images 
     val_transforms = Compose([
         SaveImagePath(keys=["image"]),
-        SaveImageSize(keys=["image"]),
-        LoadImaged(keys=["image", "label"]),  # load image
+        LoadImaged(
+            keys=["image", "label"]
+        ),  # load image
         EnsureChannelFirstd(keys=["image", "label"]),
         ScaleIntensityd(keys=["image"]),
         SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), # ensure data is the same size
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
         ToTensord(keys=["image", "label"])
     ])
 
@@ -127,7 +129,6 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     strides = []
     for i in range(depth-1):
         strides.append(2)
-    strides.append(1)
     print("strides: ", strides)
 
     # define model 
@@ -249,13 +250,11 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         for i, batch in enumerate(test_loader):      
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             gad_paths = batch["image_filepath"]
-            gad_image_original_size = batch["image_size"]
+            gad_image_original_size = batch["original_image_size"]
+
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
             loss_value = loss(degad_images, nogad_images)
             test_loss += loss_value.item()
-
-            resize = Resize(spatial_size=gad_image_original_size, mode="trilinear", align_corners=True)
-            degad_images = resize(degad_images)
 
             # to save the output files 
             # shape[0] gives number of images 
@@ -271,13 +270,10 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
 
                 # Create prediction Nifti in transformed space
                 pred_nib = nib.Nifti1Image(data_np, affine=np.eye(4))  # temporary identity affine
-
-                # Resample prediction to match original GAD image (both shape & affine)
-                resampled_nib = resample_from_to(pred_nib, gad_nib)
             
                 os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True) # save in bids format
                 output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
-                nib.save(resampled_nib, output_path)
+                nib.save(pred_nib, output_path)
         
     print(f"Test Loss: {test_loss / len(test_loader):.4f}")
 if __name__ == "__main__":
