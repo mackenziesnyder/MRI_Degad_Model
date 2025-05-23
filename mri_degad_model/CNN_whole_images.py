@@ -19,6 +19,7 @@ from monai.transforms import (
 )
 from monai.data import Dataset, DataLoader
 from monai.networks.nets import UNet
+from monai.losses import SSIMLoss
 
 import time
 import numpy as np
@@ -152,7 +153,9 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     max_epochs = 150
     best_model_path = f"{output_dir}/best_model.pt"
 
-    loss = torch.nn.L1Loss().to(device) # mae
+    # loss = torch.nn.L1Loss().to(device) # mae
+    ssim_loss = SSIMLoss(spatial_dims=3)
+
     train_losses = [float('inf')]
     val_losses = [float('inf')]
     best_val_loss = float('inf')
@@ -180,7 +183,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             optimizer.zero_grad() #resets optimizer to 0
             degad_images = model(gad_images)
             degad_images = degad_images[:, :, :image_size, :image_size, :image_size]   
-            train_loss = loss(degad_images, nogad_images)
+            train_loss = ssim_loss(degad_images, gad_images)
             train_loss.backward() # computes gradients for each parameter based on loss
             optimizer.step() # updates the model weights using the gradient
             avg_train_loss += train_loss.item() 
@@ -195,7 +198,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
                 degad_images = model(gad_images)
                 degad_images = degad_images[:, :, :image_size, :image_size, :image_size]  
-                val_loss = loss(degad_images, nogad_images)
+                val_loss = ssim_loss(degad_images, gad_images)
                 avg_val_loss += val_loss.item()        
             avg_val_loss /= len(val_loader) #producing average val loss for this epoch
             val_losses.append(avg_val_loss) 
@@ -250,10 +253,9 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         for i, batch in enumerate(test_loader):      
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             gad_paths = batch["image_filepath"]
-            gad_image_original_size = batch["original_image_size"]
-
+            
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
-            loss_value = loss(degad_images, nogad_images)
+            loss_value = ssim_loss(degad_images, gad_images)
             test_loss += loss_value.item()
 
             # to save the output files 
