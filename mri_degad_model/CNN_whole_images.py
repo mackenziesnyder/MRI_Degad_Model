@@ -141,6 +141,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         strides=strides,
         num_res_units=2,
         dropout=0.2,
+        padding=True,
         norm='BATCH'
     ).apply(monai.networks.normal_init).to(device)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -182,7 +183,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             optimizer.zero_grad() #resets optimizer to 0
             degad_images = model(gad_images)
-            degad_images = degad_images[:, :, :image_size, :image_size, :image_size]   
+            # degad_images = degad_images[:, :, :image_size, :image_size, :image_size]   
             train_loss = ssim_loss(degad_images, gad_images)
             train_loss.backward() # computes gradients for each parameter based on loss
             optimizer.step() # updates the model weights using the gradient
@@ -197,7 +198,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             for batch in val_loader: # iterating through dataloader
                 gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
                 degad_images = model(gad_images)
-                degad_images = degad_images[:, :, :image_size, :image_size, :image_size]  
+                # degad_images = degad_images[:, :, :image_size, :image_size, :image_size]  
                 val_loss = ssim_loss(degad_images, gad_images)
                 avg_val_loss += val_loss.item()        
             avg_val_loss /= len(val_loader) #producing average val loss for this epoch
