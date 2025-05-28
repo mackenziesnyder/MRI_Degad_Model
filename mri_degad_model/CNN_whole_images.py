@@ -141,7 +141,6 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         strides=strides,
         num_res_units=2,
         dropout=0.2,
-        padding=True,
         norm='BATCH'
     ).apply(monai.networks.normal_init).to(device)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -266,18 +265,34 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 print(gad_path)
                 gad_nib = nib.load(gad_path)
                 sub = Path(gad_path).name.split("_")[0]
-                degad_name = f"{sub}_acq-degad_T1w.nii.gz"             
+                
+                degad_name = f"{sub}_acq-degad_T1w.nii.gz" 
+                nogad_name = f"{sub}_acq-nogad_T1w.nii.gz" 
+                gad_name = f"{sub}_acq-gad_T1w.nii.gz"           
                 
                 # Convert predicted output to NumPy
-                data_np = degad_images[j, 0].detach().cpu().numpy()
+                degad_np = degad_images[j, 0].detach().cpu().numpy()
+                nogad_np = nogad_images[j, 0].detach().cpu().numpy()
+                gad_np = gad_images[j, 0].detach().cpu().numpy()
 
                 # Create prediction Nifti in transformed space
-                pred_nib = nib.Nifti1Image(data_np, affine=np.eye(4))  # temporary identity affine
+                affine = gad_nib.affine if gad_nib is not None else np.eye(4)
+
+                # Create Nifti images
+                degad_nib = nib.Nifti1Image(degad_np, affine)
+                nogad_nib = nib.Nifti1Image(nogad_np, affine)
+                gad_nib = nib.Nifti1Image(gad_np, affine)
+
             
-                os.makedirs(f'{output_dir_test}/bids/{sub}/ses-pre/anat', exist_ok=True) # save in bids format
-                output_path = f'{output_dir_test}/bids/{sub}/ses-pre/anat/{degad_name}'
-                nib.save(pred_nib, output_path)
-        
+                # Output directory in BIDS format
+                subject_output_dir = f'{output_dir_test}/bids/{sub}/ses-pre/anat'
+                os.makedirs(subject_output_dir, exist_ok=True)
+
+                # Save all images
+                nib.save(degad_nib, os.path.join(subject_output_dir, degad_name))
+                nib.save(nogad_nib, os.path.join(subject_output_dir, nogad_name))
+                nib.save(gad_nib, os.path.join(subject_output_dir, gad_name))  
+
     print(f"Test Loss: {test_loss / len(test_loader):.4f}")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
