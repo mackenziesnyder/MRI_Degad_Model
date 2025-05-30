@@ -49,11 +49,13 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     pin_memory = torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    input_dir = input_dir[0]
+    # input_dir = input_dir[0]
+    
     # creates dictionary of matching image and label paths
     work_dir = os.path.join(input_dir, "work")
     subject_dirs = glob.glob(os.path.join(work_dir, "sub-*"))
     subjects = []
+    
     for directory in subject_dirs:
         if os.path.isdir(directory): 
             subjects.append(directory)
@@ -62,19 +64,19 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         gad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-gad*_T1w.nii.gz"))
         nogad_images = glob.glob(os.path.join(sub, "ses-pre", "normalize", "*acq-nongad*_T1w.nii.gz"))
         if gad_images and nogad_images:
-            data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0], "image_shape": gad_images[0]})
+            data_dicts.append({"image": gad_images[0], "label": nogad_images[0], "image_filepath": gad_images[0]})
     print("Loaded", len(data_dicts), "paired samples.")
     
-    # split into train, val, test
+    # split into train, val, test - 70, 15, 15
     train_val, test = train_test_split(data_dicts, test_size=0.15, random_state=42)
     train, val = train_test_split(train_val, test_size=0.176, random_state=42) # 0.176 = 15% of the full data
     print(f"Train: {len(train)}, Val: {len(val)}, Test: {len(test)}")
     
-    # set size of image to patch size (patch_size, patch_size, patch_size)
+    # create image tuple to use below
     dims_tuple = (image_size,)*3
     print("dims_tuple: ", dims_tuple)
 
-  # train tranforms 
+    # train tranforms 
     train_transforms = Compose([
         LoadImaged(
             keys=["image", "label"], 
@@ -90,8 +92,8 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             scale_range=0.5, padding_mode= "zeros"
         ),
         RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=(0,1,2)),
-        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple), #ensure all images are (1,256,256,256) if too small
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
+        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple), #ensure all images are padded if too small
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are cropped if too big
         ToTensord(keys=["image", "label"])
     ])
 
@@ -108,8 +110,8 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         ),  # load image
         EnsureChannelFirstd(keys=["image", "label"]),
         ScaleIntensityd(keys=["image"]),
-        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), # ensure data is the same size
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are (1,256,256,256) if too big
+        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), #ensure all images are padded if too small
+        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are cropped if too big
         ToTensord(keys=["image", "label"])
     ])
 
@@ -154,7 +156,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     best_model_path = f"{output_dir}/best_model.pt"
 
     # loss = torch.nn.L1Loss().to(device) # mae
-    ssim_loss = SSIMLoss(spatial_dims=3)
+    loss = SSIMLoss(spatial_dims=3) #SSIM
 
     train_losses = [float('inf')]
     val_losses = [float('inf')]
@@ -174,16 +176,17 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             desc=f"epoch {epoch + 1}, training mae loss: {train_loss_display}, validation mae metric: {val_loss_display}",
             newline=True
         )
+        
         # training
         avg_train_loss = 0
         print("--------Training--------")
         for batch in train_loader:
+            
             # image is gad image, label is nogad image
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             optimizer.zero_grad() #resets optimizer to 0
-            degad_images = model(gad_images)
-            # degad_images = degad_images[:, :, :image_size, :image_size, :image_size]   
-            train_loss = ssim_loss(degad_images, gad_images)
+            degad_images = model(gad_images) 
+            train_loss = loss(degad_images, gad_images)
             train_loss.backward() # computes gradients for each parameter based on loss
             optimizer.step() # updates the model weights using the gradient
             avg_train_loss += train_loss.item() 
@@ -191,14 +194,14 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         train_losses.append(avg_train_loss) # append total epoch loss divided by the number of training steps in epoch to loss list
         model.eval()  
         print("--------Validation--------")
+        
         # validation 
         with torch.no_grad(): #we do not update weights/biases in validation training, only used to assess current state of model
             avg_val_loss = 0 # will hold sum of all validation losses in epoch and then average
             for batch in val_loader: # iterating through dataloader
                 gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
                 degad_images = model(gad_images)
-                # degad_images = degad_images[:, :, :image_size, :image_size, :image_size]  
-                val_loss = ssim_loss(degad_images, gad_images)
+                val_loss = loss(degad_images, gad_images)
                 avg_val_loss += val_loss.item()        
             avg_val_loss /= len(val_loader) #producing average val loss for this epoch
             val_losses.append(avg_val_loss) 
@@ -255,7 +258,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             gad_paths = batch["image_filepath"]
             
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
-            loss_value = ssim_loss(degad_images, gad_images)
+            loss_value = loss(degad_images, gad_images)
             test_loss += loss_value.item()
 
             # to save the output files 
@@ -270,30 +273,30 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 nogad_name = f"{sub}_acq-nogad_T1w.nii.gz" 
                 gad_name = f"{sub}_acq-gad_T1w.nii.gz"           
                 
-                # Convert predicted output to NumPy
+                # convert predicted output to NumPy
                 degad_np = degad_images[j, 0].detach().cpu().numpy()
                 nogad_np = nogad_images[j, 0].detach().cpu().numpy()
                 gad_np = gad_images[j, 0].detach().cpu().numpy()
 
-                # Create prediction Nifti in transformed space
-                affine = gad_nib.affine if gad_nib is not None else np.eye(4)
+                # use original gad_affine on the image 
+                gad_affine = gad_nib.affine if gad_nib is not None else np.eye(4)
 
-                # Create Nifti images
+                # create nifti images 
                 degad_nib = nib.Nifti1Image(degad_np, affine)
                 nogad_nib = nib.Nifti1Image(nogad_np, affine)
                 gad_nib = nib.Nifti1Image(gad_np, affine)
 
-            
-                # Output directory in BIDS format
+                # output directory in BIDS format
                 subject_output_dir = f'{output_dir_test}/bids/{sub}/ses-pre/anat'
                 os.makedirs(subject_output_dir, exist_ok=True)
 
-                # Save all images
+                # save all images
                 nib.save(degad_nib, os.path.join(subject_output_dir, degad_name))
                 nib.save(nogad_nib, os.path.join(subject_output_dir, nogad_name))
                 nib.save(gad_nib, os.path.join(subject_output_dir, gad_name))  
 
     print(f"Test Loss: {test_loss / len(test_loader):.4f}")
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CNN degad model with specified parameters.")
     parser.add_argument("--input", nargs='+', required=True, help="Path to the training and validation data, in that order")
