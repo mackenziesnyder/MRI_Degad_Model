@@ -186,7 +186,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             optimizer.zero_grad() #resets optimizer to 0
             degad_images = model(gad_images) 
-            train_loss = loss(degad_images, gad_images)
+            train_loss = loss(degad_images, nogad_images)
             train_loss.backward() # computes gradients for each parameter based on loss
             optimizer.step() # updates the model weights using the gradient
             avg_train_loss += train_loss.item() 
@@ -201,7 +201,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             for batch in val_loader: # iterating through dataloader
                 gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
                 degad_images = model(gad_images)
-                val_loss = loss(degad_images, gad_images)
+                val_loss = loss(degad_images, nogad_images)
                 avg_val_loss += val_loss.item()        
             avg_val_loss /= len(val_loader) #producing average val loss for this epoch
             val_losses.append(avg_val_loss) 
@@ -258,7 +258,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             gad_paths = batch["image_filepath"]
             
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
-            loss_value = loss(degad_images, gad_images)
+            loss_value = loss(degad_images, nogad_images)
             test_loss += loss_value.item()
 
             # to save the output files 
