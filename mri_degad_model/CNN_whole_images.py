@@ -282,9 +282,9 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
                 gad_affine = gad_nib.affine if gad_nib is not None else np.eye(4)
 
                 # create nifti images 
-                degad_nib = nib.Nifti1Image(degad_np, affine)
-                nogad_nib = nib.Nifti1Image(nogad_np, affine)
-                gad_nib = nib.Nifti1Image(gad_np, affine)
+                degad_nib = nib.Nifti1Image(degad_np, gad_affine)
+                nogad_nib = nib.Nifti1Image(nogad_np, gad_affine)
+                gad_nib = nib.Nifti1Image(gad_np, gad_affine)
 
                 # output directory in BIDS format
                 subject_output_dir = f'{output_dir_test}/bids/{sub}/ses-pre/anat'
