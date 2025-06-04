@@ -49,7 +49,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     pin_memory = torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # input_dir = input_dir[0]
+    input_dir = input_dir[0]
     
     # creates dictionary of matching image and label paths
     work_dir = os.path.join(input_dir, "work")
