@@ -43,6 +43,27 @@ def get_gad_and_degad_nifti(input_dir):
 
     return train_a, test_a, train_b, test_b
 
+def is_informative(slice_2d, threshold_std=5, threshold_nonzero_ratio=0.01, center_crop_ratio=0.5, center_nonzero_thresh=0.05):
+    
+    # compute standard deviation - if too low not that much variation in values
+    std_val = np.std(slice_2d)
+
+    # ensures more than the desired % of the image contains non-zero values
+    nonzero_ratio = np.count_nonzero(slice_2d) / slice_2d.size
+
+    # check central region content to ensure more than the desired % contains non-zero values
+    h, w = slice_2d.shape
+    ch, cw = int(h * center_crop_ratio), int(w * center_crop_ratio) # how much h and w are 50%
+    start_h, start_w = (h - ch) // 2, (w - cw) // 2 
+    center_crop = slice_2d[start_h:start_h+ch, start_w:start_w+cw]
+    center_nonzero_ratio = np.count_nonzero(center_crop) / center_crop.size
+
+    return (
+        std_val > threshold_std
+        and nonzero_ratio > threshold_nonzero_ratio
+        and center_nonzero_ratio > center_nonzero_thresh
+    )
+
 def slice_3d_images(nifti_paths, output_dir, tag):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -52,10 +73,14 @@ def slice_3d_images(nifti_paths, output_dir, tag):
         print("shape:", data.shape)
         subject_id = os.path.basename(path).split("_")[0]
 
+        # do not slice edges 
+        start_idx = 10
+        end_idx = data.shape[2] - 10
+
         # 0, 1, 2 = sagittal, coronal, axial 
         # axial is the most common slice for ml
         
-        for i in range(data.shape[2]):  
+        for i in range(start_idx, end_idx):  
             slice_2d = data[:, :, i]
 
             min_pixel_val = np.min(slice_2d)
@@ -63,6 +88,9 @@ def slice_3d_images(nifti_paths, output_dir, tag):
 
             # avoid divide-by-zero for blank slices
             if np.max(slice_2d) == np.min(slice_2d):
+                continue
+            
+            if not is_informative(slice_2d):
                 continue
 
             # in order to covert to image:
@@ -79,6 +107,9 @@ def slice_3d_images(nifti_paths, output_dir, tag):
             img_pil.save(os.path.join(output_dir, slice_filename))
 
     print(f"Sliced and saved {tag} images to {output_dir}")
+
+
+
 
 
 
