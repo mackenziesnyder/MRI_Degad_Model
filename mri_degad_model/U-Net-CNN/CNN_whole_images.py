@@ -11,8 +11,9 @@ from monai.transforms import (
     EnsureChannelFirstd,
     Rand3DElasticd,
     ScaleIntensityd,
-    SpatialPadd,
-    CenterSpatialCropd,
+    Orientationd,
+    Spacingd,
+    ResizeWithPadOrCropd,
     RandFlipd,
     ToTensord,
     MapTransform
@@ -76,24 +77,28 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     dims_tuple = (image_size,)*3
     print("dims_tuple: ", dims_tuple)
 
-    # train tranforms 
     train_transforms = Compose([
-        LoadImaged(
+        LoadImaged(keys=["image", "label"]),
+        EnsureChannelFirstd(keys=["image", "label"]),
+        Orientationd(keys=["image", "label"], axcodes="RAS"),
+        Spacingd(
             keys=["image", "label"], 
-        ),  # load image from the file path 
-        EnsureChannelFirstd(keys=["image", "label"]), # ensure this is [C, H, W, (D)]
-        ScaleIntensityd(keys=["image"]), # scales the intensity from 0-1
-        Rand3DElasticd(
-            keys = ("image","label"), 
-            sigma_range = (0.5,1), 
-            magnitude_range = (0.1, 0.4), 
-            prob=0.4, 
-            shear_range=(0.1, -0.05, 0.0, 0.0, 0.0, 0.0),
-            scale_range=0.5, padding_mode= "zeros"
+            pixdim=(1.0, 1.0, 1.0), 
+            mode=("bilinear", "nearest")
+        )
+        ResizeWithPadOrCropd(
+            keys=["image", "label"], 
+            spatial_size=(256, 256, 256)
         ),
-        RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=(0,1,2)),
-        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple), #ensure all images are padded if too small
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are cropped if too big
+        ScaleIntensityd(keys=["image"]),
+        Rand3DElasticd(
+            keys=["image", "label"],
+            sigma_range=(0.5, 1),
+            magnitude_range=(0.1, 0.3),
+            prob=0.2,
+            padding_mode="zeros"
+        ),
+        RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=(0, 1, 2)),
         ToTensord(keys=["image", "label"])
     ])
 
@@ -105,15 +110,14 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     # want to validate and test with whole images 
     val_transforms = Compose([
         SaveImagePath(keys=["image"]),
-        LoadImaged(
-            keys=["image", "label"]
-        ),  # load image
+        LoadImaged(keys=["image", "label"]),
         EnsureChannelFirstd(keys=["image", "label"]),
+        Orientationd(keys=["image", "label"], axcodes="RAS"),
+        Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
+        ResizeWithPadOrCropd(keys=["image", "label"], spatial_size=dims_tuple),
         ScaleIntensityd(keys=["image"]),
-        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple), #ensure all images are padded if too small
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple), # ensure all images are cropped if too big
-        ToTensord(keys=["image", "label"])
-    ])
+        ToTensord(keys=["image", "label"]),
+])
 
     train_ds = Dataset(data=train, transform=train_transforms)
     val_ds = Dataset(data=val, transform=val_transforms)
