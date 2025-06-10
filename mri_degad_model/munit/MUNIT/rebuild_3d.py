@@ -18,7 +18,7 @@ def rebuild_3d(slice_dir):
             img = img[:, :, 0]
         slices.append(img)
 
-    volume = np.stack(slices, axis=0)  # Shape: (depth, height, width)
+    volume = np.stack(slices, axis=0)
     return volume
 
 def save_nifti(volume, output_path, affine=np.eye(4)):
@@ -26,10 +26,9 @@ def save_nifti(volume, output_path, affine=np.eye(4)):
     nib.save(nifti_img, output_path)
     print(f"Saved 3D volume as NIfTI: {output_path}")
 
-# === Example usage ===
 home = Path.home()
 
-slice_folder = home / "graham/scratch/2dtest"  # replace with your actual path
+slice_folder = home / "graham/scratch/2dtest"
 output_nifti = home / "graham/scratch/reconstructed_volume.nii.gz"
 
 volume = rebuild_3d(slice_folder)
