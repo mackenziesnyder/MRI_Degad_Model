@@ -3,12 +3,12 @@ from dataset import NogadGadDataset
 import sys
 from utils import save_checkpoint, load_checkpoint
 from torchvision import transforms 
-from torch.utils.data import datloader 
-from torchvision.datasets port ImageFolder
+from torch.utils.data import DataLoader
+from torchvision.datasets import ImageFolder
 import torch.nn as nn
 import torch.optim as optim 
 import config
-import tqdm as tqdm
+from tqdm import tqdm
 from torchvision.utils import save_image
 from discriminator_model import Discriminator
 from generator_model import Generator 
@@ -38,9 +38,9 @@ def train_fn(
             D_H_fake_loss = mse(D_H_fake, torch.zeros_like(D_H_fake))
             D_H_loss = D_H_real_loss + D_H_fake_loss
 
-            fake_nogad = gen_Z(gad)
-            D_Z_real = disc_Z(nogad)
-            D_Z_fake = disc_Z(fake_nogad.detach())
+            fake_nogad = genZ(gad)
+            D_Z_real = discZ(nogad)
+            D_Z_fake = discZ(fake_nogad.detach())
             D_Z_real_loss = mse(D_Z_real, torch.ones_like(D_Z_real))
             D_Z_fake_loss = mse(D_Z_fake, torch.zeros_like(D_Z_fake))
             D_Z_loss = D_Z_real_loss + D_Z_fake_loss
@@ -56,20 +56,20 @@ def train_fn(
         # Train Generators H and Z
         with torch.cuda.amp.autocast():
             # adversarial loss for both generators
-            D_H_fake = disc_H(fake_gad)
-            D_Z_fake = disc_Z(fake_nogad)
+            D_H_fake = discH(fake_gad)
+            D_Z_fake = discZ(fake_nogad)
             loss_G_H = mse(D_H_fake, torch.ones_like(D_H_fake))
             loss_G_Z = mse(D_Z_fake, torch.ones_like(D_Z_fake))
 
             # cycle loss
-            cycle_nogad = gen_Z(fake_gad)
-            cycle_gad = gen_H(fake_nogad)
+            cycle_nogad = genZ(fake_gad)
+            cycle_gad = genH(fake_nogad)
             cycle_nogad_loss = l1(nogad, cycle_nogad)
             cycle_gad_loss = l1(gad, cycle_gad)
 
             # identity loss (remove these for efficiency if you set lambda_identity=0)
-            identity_nogad = gen_Z(nogad)
-            identity_gad = gen_H(gad)
+            identity_nogad = genZ(nogad)
+            identity_gad = genH(gad)
             identity_nogad_loss = l1(nogad, identity_nogad)
             identity_gad_loss = l1(gad, identity_gad)
 
@@ -87,8 +87,8 @@ def train_fn(
         g_scaler.scale(G_loss).backward()
         g_scaler.step(opt_gen)
         g_scaler.update()
-
-        if idx % 200 == 0:
+        
+        if idx % 500 == 0:
             save_image(fake_gad * 0.5 + 0.5, f"saved_images/gad_{idx}.png")
             save_image(fake_nogad * 0.5 + 0.5, f"saved_images/nogad_{idx}.png")
 
@@ -96,10 +96,10 @@ def train_fn(
 
 
 def main():
-    discH = Discriminator(in_channels=3).to(config.DEVICE)
-    discZ = Discriminator(in_channels=3).to(config.DEVICE) 
-    genH = Generator(img_channels=3, num_residuals=9).to(config.DEVICE)
-    genZ = Generator(img_channels=3, num_residuals=9).to(config.DEVICE)
+    discH = Discriminator(in_channels=1).to(config.DEVICE)
+    discZ = Discriminator(in_channels=1).to(config.DEVICE) 
+    genH = Generator(img_channels=1, num_features=64, num_residuals=9).to(config.DEVICE)
+    genZ = Generator(img_channels=1, num_features=64, num_residuals=9).to(config.DEVICE)
 
     opt_disc = optim.Adam(
         list(discH.parameters()) + list(discZ.parameters()),
@@ -130,11 +130,10 @@ def main():
         )
     
     dataset = NogadGadDataset(
-        root_nogad = config.TRAIN_DIR + "/nogad",
-        root_gad = config.TRAIN_DIR + "/gad",
-        transform = config.transforms
+        root_nogad = config.TRAIN_DIR + "/train_b",
+        root_gad = config.TRAIN_DIR + "/train_a",
+        transform = config.transform_pipeline
     )
-
     loader = DataLoader(
         dataset,
         batch_size=config.BATCH_SIZE,
@@ -168,6 +167,6 @@ def main():
             save_checkpoint(discZ, opt_disc, filename=config.CHECKPOINT_DISC_Z)
 
 
-if __name__ = __main__():
+if __name__ == "__main__":
     main()
 

@@ -1,10 +1,12 @@
 import torch
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import cv2
+from torchvision import transforms
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-TRAIN_DIR = "data/train"
-# VAL_DIR = "data/val"
+TRAIN_DIR = "/home/UWO/msnyde26/graham/scratch/cyclegan_data/"
+AL_DIR = "/home/UWO/msnyde26/graham/scratch/cyclegan_data/"
 BATCH_SIZE = 1
 LEARNING_RATE = 1e-5
 LAMBDA_IDENTITY = 0.0
@@ -15,8 +17,8 @@ LOAD_MODEL = False
 SAVE_MODEL = True
 CHECKPOINT_GEN_H = "genh.pth.tar"
 CHECKPOINT_GEN_Z = "genz.pth.tar"
-CHECKPOINT_CRITIC_H = "critich.pth.tar"
-CHECKPOINT_CRITIC_Z = "criticz.pth.tar"
+CHECKPOINT_DISC_H = "critich.pth.tar"
+CHECKPOINT_SISC_Z = "criticz.pth.tar"
 
 class PadToSize:
     def __init__(self, size):
@@ -30,13 +32,9 @@ class PadToSize:
         padding = (pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2)
         return transforms.functional.pad(img, padding, fill=0, padding_mode='constant')
 
-transforms = A.Compose(
-    [
-        A.PadToSize((256, 256)),
-        A.CenterCrop((256, 256)),
-        A.HorizontalFlip(p=0.5),
-        A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], max_pixel_value=255),
-        ToTensorV2(),
-    ],
-    additional_targets={"image0": "image"},
-)
+transform_pipeline = transforms.Compose([
+    PadToSize((256, 256)),
+    transforms.CenterCrop((256, 256)),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
