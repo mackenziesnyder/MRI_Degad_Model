@@ -17,8 +17,8 @@ LOAD_MODEL = False
 SAVE_MODEL = True
 CHECKPOINT_GEN_H = "genh.pth.tar"
 CHECKPOINT_GEN_Z = "genz.pth.tar"
-CHECKPOINT_DISC_H = "critich.pth.tar"
-CHECKPOINT_SISC_Z = "criticz.pth.tar"
+CHECKPOINT_DISC_H = "disch.pth.tar"
+CHECKPOINT_DISC_Z = "discz.pth.tar"
 
 class PadToSize:
     def __init__(self, size):
