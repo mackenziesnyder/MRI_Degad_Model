@@ -63,7 +63,7 @@ def slice_gad_2d(gad_image_path, output_dir):
         # converts to image and greyscale 
         img_pil = Image.fromarray(slice_2d).convert("L")
         
-        subject_dir = os.path.join(output_dir, f"sub-{subject_id}")
+        subject_dir = os.path.join(output_dir, f"{subject_id}-2d_slices")
         os.makedirs(subject_dir, exist_ok=True)
 
         slice_filename = f"{subject_id}_slice_{i:03d}.png"
@@ -111,14 +111,14 @@ def apply_model(model_path, slice_dir, output_dir, subject_id, device):
         degad_dir = os.path.join(output_dir, f"{subject_id}-degad")
         os.makedirs(degad_dir, exist_ok=True)
 
-        save_path = os.path.join(degad_dir, f"{fname}-degad")
+        save_path = os.path.join(degad_dir, f"{fname}")
         Image.fromarray(fake_nogad_img).save(save_path)
 
         print("added line in file") 
     
     return degad_dir
 
-def rebuild_3d(degad_dir, gad_image_path):
+def rebuild_3d(degad_dir, gad_image_path, subject_id):
     slice_files = sorted([
         f for f in os.listdir(degad_dir)
         if f.endswith(('.png', '.jpg', '.jpeg', '.tif', '.tiff'))
@@ -132,14 +132,14 @@ def rebuild_3d(degad_dir, gad_image_path):
         slices.append(img)
 
     volume = np.stack(slices, axis=0)
-    gad_affine = # get this from the original gad image 
+    gad_affine = np.eye(4)
     
-    output_path = os.path.join(degad_dir, f"{sub}-reconstructed.nii.gz")
+    output_path = os.path.join(degad_dir, f"{subject_id}-reconstructed.nii.gz")
 
     nifti_img = nib.Nifti1Image(volume, gad_affine)
     nib.save(nifti_img, output_path)
     return output_path
-    
+
 # resamle / register to gad image with itksnap 
 
 # only for testing

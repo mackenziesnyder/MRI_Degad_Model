@@ -130,8 +130,8 @@ def main():
         )
     
     dataset = NogadGadDataset(
-        root_nogad = config.TRAIN_DIR + "/train_b_2",
-        root_gad = config.TRAIN_DIR + "/train_a_2",
+        root_nogad = config.TRAIN_DIR + "/train_b",
+        root_gad = config.TRAIN_DIR + "/train_a",
         transform = config.transform_pipeline
     )
     loader = DataLoader(
