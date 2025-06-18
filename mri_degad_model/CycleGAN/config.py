@@ -5,8 +5,8 @@ import cv2
 from torchvision import transforms
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-TRAIN_DIR = "/home/UWO/msnyde26/graham/scratch/cyclegan_data/"
-AL_DIR = "/home/UWO/msnyde26/graham/scratch/cyclegan_data/"
+TRAIN_DIR = "/home/UWO/msnyde26/graham/scratch/degad_preprocessed_data/"
+VAL_DIR = "/home/UWO/msnyde26/graham/scratch/degad_preprocessed_data/"
 BATCH_SIZE = 1
 LEARNING_RATE = 1e-5
 LAMBDA_IDENTITY = 0.0

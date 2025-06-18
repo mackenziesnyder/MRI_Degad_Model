@@ -28,16 +28,8 @@ class NogadGadDataset(Dataset):
         nogad_img = Image.open(nogad_path).convert("L")  # grayscale PIL image
         gad_img = Image.open(gad_path).convert("L")
 
-        print("Before transform:")
-        print("nogad_img size:", nogad_img.size)
-        print("gad_img size:", gad_img.size)
-
         if self.transform:
             nogad_img = self.transform(nogad_img)
             gad_img = self.transform(gad_img)
-
-        print("After transform:")
-        print("nogad_img shape:", nogad_img.shape)
-        print("gad_img shape:", gad_img.shape)
 
         return nogad_img, gad_img

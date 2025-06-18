@@ -44,64 +44,64 @@ else:
 # trainer.cuda()
 trainer.to(device)
 
-# get_data(config)
+get_data(config)
 
-train_a_out = config['output_dir_train_a']
-test_a_out = config['output_dir_test_a']
-train_b_out = config['output_dir_train_b']
-test_b_out = config['output_dir_test_b']
+# train_a_out = config['output_dir_train_a']
+# test_a_out = config['output_dir_test_a']
+# train_b_out = config['output_dir_train_b']
+# test_b_out = config['output_dir_test_b']
 
-train_loader_a, train_loader_b, test_loader_a, test_loader_b = get_all_data_loaders(config, train_a_out, test_a_out, train_b_out, test_b_out)
-train_display_images_a = torch.stack([train_loader_a.dataset[i] for i in range(display_size)]).to(device)
-train_display_images_b = torch.stack([train_loader_b.dataset[i] for i in range(display_size)]).to(device)
-test_display_images_a = torch.stack([test_loader_a.dataset[i] for i in range(display_size)]).to(device)
-test_display_images_b = torch.stack([test_loader_b.dataset[i] for i in range(display_size)]).to(device)
+# train_loader_a, train_loader_b, test_loader_a, test_loader_b = get_all_data_loaders(config, train_a_out, test_a_out, train_b_out, test_b_out)
+# train_display_images_a = torch.stack([train_loader_a.dataset[i] for i in range(display_size)]).to(device)
+# train_display_images_b = torch.stack([train_loader_b.dataset[i] for i in range(display_size)]).to(device)
+# test_display_images_a = torch.stack([test_loader_a.dataset[i] for i in range(display_size)]).to(device)
+# test_display_images_b = torch.stack([test_loader_b.dataset[i] for i in range(display_size)]).to(device)
 
-# Setup logger and output folders
-model_name = os.path.splitext(os.path.basename(opts.config))[0]
-train_writer = tensorboardX.SummaryWriter(os.path.join(opts.output_path + "/logs", model_name))
-output_directory = os.path.join(opts.output_path + "/outputs", model_name)
-checkpoint_directory, image_directory = prepare_sub_folder(output_directory)
-shutil.copy(opts.config, os.path.join(output_directory, 'config.yaml')) # copy config file to output folder
+# # Setup logger and output folders
+# model_name = os.path.splitext(os.path.basename(opts.config))[0]
+# train_writer = tensorboardX.SummaryWriter(os.path.join(opts.output_path + "/logs", model_name))
+# output_directory = os.path.join(opts.output_path + "/outputs", model_name)
+# checkpoint_directory, image_directory = prepare_sub_folder(output_directory)
+# shutil.copy(opts.config, os.path.join(output_directory, 'config.yaml')) # copy config file to output folder
 
-# Start training
-iterations = trainer.resume(checkpoint_directory, hyperparameters=config) if opts.resume else 0
-while True:
-    for it, (images_a, images_b) in enumerate(zip(train_loader_a, train_loader_b)):
-        trainer.update_learning_rate()
-        images_a, images_b = images_a.detach(), images_b.detach()
+# # Start training
+# iterations = trainer.resume(checkpoint_directory, hyperparameters=config) if opts.resume else 0
+# while True:
+#     for it, (images_a, images_b) in enumerate(zip(train_loader_a, train_loader_b)):
+#         trainer.update_learning_rate()
+#         images_a, images_b = images_a.detach(), images_b.detach()
 
-        with Timer("Elapsed time in update: %f"):
-            # Main training code
-            trainer.dis_update(images_a, images_b, config)
-            trainer.gen_update(images_a, images_b, config)
-            # torch.cuda.synchronize()
+#         with Timer("Elapsed time in update: %f"):
+#             # Main training code
+#             trainer.dis_update(images_a, images_b, config)
+#             trainer.gen_update(images_a, images_b, config)
+#             # torch.cuda.synchronize()
 
-        # Dump training stats in log file
-        if (iterations + 1) % config['log_iter'] == 0:
-            print("Iteration: %08d/%08d" % (iterations + 1, max_iter))
-            write_loss(iterations, trainer, train_writer)
+#         # Dump training stats in log file
+#         if (iterations + 1) % config['log_iter'] == 0:
+#             print("Iteration: %08d/%08d" % (iterations + 1, max_iter))
+#             write_loss(iterations, trainer, train_writer)
 
-        # Write images
-        if (iterations + 1) % config['image_save_iter'] == 0:
-            with torch.no_grad():
-                test_image_outputs = trainer.sample(test_display_images_a, test_display_images_b)
-                train_image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
-            write_2images(test_image_outputs, display_size, image_directory, 'test_%08d' % (iterations + 1))
-            write_2images(train_image_outputs, display_size, image_directory, 'train_%08d' % (iterations + 1))
-            # HTML
-            write_html(output_directory + "/index.html", iterations + 1, config['image_save_iter'], 'images')
+#         # Write images
+#         if (iterations + 1) % config['image_save_iter'] == 0:
+#             with torch.no_grad():
+#                 test_image_outputs = trainer.sample(test_display_images_a, test_display_images_b)
+#                 train_image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
+#             write_2images(test_image_outputs, display_size, image_directory, 'test_%08d' % (iterations + 1))
+#             write_2images(train_image_outputs, display_size, image_directory, 'train_%08d' % (iterations + 1))
+#             # HTML
+#             write_html(output_directory + "/index.html", iterations + 1, config['image_save_iter'], 'images')
 
-        if (iterations + 1) % config['image_display_iter'] == 0:
-            with torch.no_grad():
-                image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
-            write_2images(image_outputs, display_size, image_directory, 'train_current')
+#         if (iterations + 1) % config['image_display_iter'] == 0:
+#             with torch.no_grad():
+#                 image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
+#             write_2images(image_outputs, display_size, image_directory, 'train_current')
 
-        # Save network weights
-        if (iterations + 1) % config['snapshot_save_iter'] == 0:
-            trainer.save(checkpoint_directory, iterations)
+#         # Save network weights
+#         if (iterations + 1) % config['snapshot_save_iter'] == 0:
+#             trainer.save(checkpoint_directory, iterations)
 
-        iterations += 1
-        if iterations >= max_iter:
-            sys.exit('Finish training')
+#         iterations += 1
+#         if iterations >= max_iter:
+#             sys.exit('Finish training')
 

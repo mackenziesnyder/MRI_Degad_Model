@@ -1,4 +1,6 @@
 import nibabel as nib 
+from nibabel.orientations import aff2axcodes
+from nibabel.processing import resample_from_to
 import os
 import glob
 from PIL import Image
@@ -118,10 +120,11 @@ def apply_model(model_path, slice_dir, output_dir, subject_id, device):
     
     return degad_dir
 
-def rebuild_3d(degad_dir, gad_image_path, subject_id):
+def rebuild_3d(degad_dir, gad_image_path, subject_id, ref_gad_image):
+
     slice_files = sorted([
         f for f in os.listdir(degad_dir)
-        if f.endswith(('.png', '.jpg', '.jpeg', '.tif', '.tiff'))
+        if f.endswith(('.png'))
     ])
 
     slices = []
@@ -131,19 +134,47 @@ def rebuild_3d(degad_dir, gad_image_path, subject_id):
             img = img[:, :, 0]
         slices.append(img)
 
-    volume = np.stack(slices, axis=0)
-    gad_affine = np.eye(4)
-    
-    output_path = os.path.join(degad_dir, f"{subject_id}-reconstructed.nii.gz")
+    degad_volume = np.stack(slices, axis=2).astype(np.float32)
 
-    nifti_img = nib.Nifti1Image(volume, gad_affine)
+    print("Reconstructed volume shape (X, Y, Z):", degad_volume.shape)
+
+    ref_img = nib.load(ref_gad_image)
+    ref_affine = ref_img.affine
+    ref_header = ref_img.header
+
+    print("Reference orientation:", aff2axcodes(ref_affine))
+    print("Reference shape:", ref_img.shape)
+
+    output_path = os.path.join(degad_dir, f"{subject_id}-reconstructed.nii.gz")
+    nifti_img = nib.Nifti1Image(degad_volume, ref_affine, header=ref_header)
     nib.save(nifti_img, output_path)
+    print("Saved reconstructed NIfTI to:", output_path)
+
     return output_path
 
-# resamle / register to gad image with itksnap 
+# resamle / register to gad image
+def resample_degad_to_gad(degad_img_path, ref_image_path):
+    degad_img = nib.load(degad_img_path)
+    ref_img = nib.load(ref_image_path)
+
+    print("Original degad shape:", degad_img.shape)
+    print("Reference shape:", ref_img.shape)
+
+    resampled = resample_from_to(degad_img, ref_img)
+    output_path = degad_img_path.replace(".nii", "_resampled.nii").replace(".gz", "")
+    nib.save(resampled, output_path)
+    print(f"Resampled image saved to: {output_path}")
+
+    return output_path
 
 # only for testing
 def compute_metrics(degad, nogad, sub):
+    degad = nib.load(degad)
+    nogad= nib.load(nogad)
+    
+    degad = degad.get_fdata()
+    nogad = nogad.get_fdata()
+
     mae = compute_mae(degad, nogad)
     ssim = compute_ssim(degad, nogad)
 

@@ -88,7 +88,7 @@ def train_fn(
         g_scaler.step(opt_gen)
         g_scaler.update()
         
-        if idx % 500 == 0:
+        if idx % 200 == 0:
             save_image(fake_gad * 0.5 + 0.5, f"saved_images/gad_{idx}.png")
             save_image(fake_nogad * 0.5 + 0.5, f"saved_images/nogad_{idx}.png")
 
@@ -130,8 +130,8 @@ def main():
         )
     
     dataset = NogadGadDataset(
-        root_nogad = config.TRAIN_DIR + "/train_b",
-        root_gad = config.TRAIN_DIR + "/train_a",
+        root_nogad = config.TRAIN_DIR + "train_b",
+        root_gad = config.TRAIN_DIR + "train_a",
         transform = config.transform_pipeline
     )
     loader = DataLoader(

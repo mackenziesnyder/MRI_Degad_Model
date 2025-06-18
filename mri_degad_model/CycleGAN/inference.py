@@ -1,6 +1,6 @@
 import argparse
 import torch
-from inference_functions import get_test_pairs, slice_gad_2d, apply_model, rebuild_3d
+from inference_functions import get_test_pairs, slice_gad_2d, apply_model, rebuild_3d, resample_degad_to_gad, compute_metrics
 def inference(input_dir, output_dir):
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -13,9 +13,9 @@ def inference(input_dir, output_dir):
         nogad_image_path = data["label"]
         slice_dir, sub = slice_gad_2d(gad_image_path, output_dir)
         degad_dir = apply_model(model_path, slice_dir, output_dir, sub, device)
-        degad_path = rebuild_3d(degad_dir, gad_image_path, sub)
-        #resampled_gad = resample_degad_to_gad(degad_path, gad_image_path)
-        #compute_metrics(resampled_gad,  nogad_image_path)
+        degad_path = rebuild_3d(degad_dir, gad_image_path, sub, gad_image_path)
+        resampled_gad = resample_degad_to_gad(degad_path, gad_image_path)
+        compute_metrics(resampled_gad,  nogad_image_path, sub)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Cyclegan.")
