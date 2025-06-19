@@ -11,6 +11,7 @@ from compute_loss import compute_mae, compute_ssim
 import torch
 from generator_model import Generator
 import config
+import ants 
 
 class PadToSize:
     def __init__(self, size):
@@ -152,20 +153,35 @@ def rebuild_3d(degad_dir, gad_image_path, subject_id, ref_gad_image):
 
     return output_path
 
-# resamle / register to gad image
+# resample / register to gad image
 def resample_degad_to_gad(degad_img_path, ref_image_path):
     degad_img = nib.load(degad_img_path)
     ref_img = nib.load(ref_image_path)
-
+    
     print("Original degad shape:", degad_img.shape)
     print("Reference shape:", ref_img.shape)
 
     resampled = resample_from_to(degad_img, ref_img)
-    output_path = degad_img_path.replace(".nii", "_resampled.nii").replace(".gz", "")
-    nib.save(resampled, output_path)
-    print(f"Resampled image saved to: {output_path}")
+    resampled_path = degad_img_path.replace(".nii", "_resampled.nii").replace(".gz", "")
+    nib.save(resampled, resampled_path)
+    print(f"Resampled image saved to: {resampled_path}")
 
-    return output_path
+    fixed_image = ants.image_read(ref_image_path)
+    moving_image = ants.image_read(resampled_path)
+
+    # Perform registration
+    registration_result = ants.registration(
+        fixed=fixed_image, moving=moving_image, type_of_transform="Rigid"
+    )
+
+    # Get the registered (warped) moving image
+    registered_image = registration_result["warpedmovout"]
+
+    registered_path = degad_img_path.replace(".nii", "_registered.nii").replace(".gz", "")
+    ants.image_write(registered_image, registered_path)
+    print(f"Registered image saved to: {registered_path}")
+
+    return registered_path
 
 # only for testing
 def compute_metrics(degad, nogad, sub):
