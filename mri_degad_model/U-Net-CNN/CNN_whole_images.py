@@ -20,7 +20,7 @@ from monai.transforms import (
 )
 from monai.data import Dataset, DataLoader
 from monai.networks.nets import UNet
-from monai.losses import SSIMLoss
+from monai.losses import SSIMLoss, PerceptualLoss
 
 import time
 import numpy as np
@@ -40,7 +40,6 @@ class SaveImagePath(MapTransform):
         data['image_filepath'] = data['image']
         return data
 
-    
 def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, output_direct):
     
     output_dir = f"{output_direct}/image-{image_size}_batch-{batch_size}_LR-{lr}_filter-{filter}_depth-{depth}_loss-{loss_func}/"
@@ -85,7 +84,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             keys=["image", "label"], 
             pixdim=(1.0, 1.0, 1.0), 
             mode=("bilinear", "nearest")
-        )
+        ),
         ResizeWithPadOrCropd(
             keys=["image", "label"], 
             spatial_size=(256, 256, 256)
@@ -117,7 +116,7 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
         ResizeWithPadOrCropd(keys=["image", "label"], spatial_size=dims_tuple),
         ScaleIntensityd(keys=["image"]),
         ToTensord(keys=["image", "label"]),
-])
+    ])
 
     train_ds = Dataset(data=train, transform=train_transforms)
     val_ds = Dataset(data=val, transform=val_transforms)
@@ -156,11 +155,12 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
     betas = (0.5, 0.999)
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, betas=betas)
     patience = 22 # epochs it will take for training to terminate if no improvement
-    max_epochs = 150
+    max_epochs = 1
     best_model_path = f"{output_dir}/best_model.pt"
 
-    # loss = torch.nn.L1Loss().to(device) # mae
-    loss = SSIMLoss(spatial_dims=3) #SSIM
+    l1_loss = torch.nn.L1Loss().to(device) # mae
+    ssim_loss = SSIMLoss(spatial_dims=3) #SSIM
+    p_loss = PerceptualLoss(spatial_dims=3,network_type="vgg")
 
     train_losses = [float('inf')]
     val_losses = [float('inf')]
@@ -190,7 +190,13 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             optimizer.zero_grad() #resets optimizer to 0
             degad_images = model(gad_images) 
-            train_loss = loss(degad_images, nogad_images)
+
+            mloss = l1_loss(degad_images, nogad_images)
+            sloss = ssim_loss(degad_images, nogad_images)
+            ploss = p_loss(degad_images, nogad_images)
+
+            train_loss = (0.5 * mloss) + (0.3 * sloss) + (0.2 * ploss)
+
             train_loss.backward() # computes gradients for each parameter based on loss
             optimizer.step() # updates the model weights using the gradient
             avg_train_loss += train_loss.item() 
@@ -205,7 +211,13 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             for batch in val_loader: # iterating through dataloader
                 gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
                 degad_images = model(gad_images)
-                val_loss = loss(degad_images, nogad_images)
+
+                mloss = l1_loss(degad_images, nogad_images)
+                sloss = ssim_loss(degad_images, nogad_images)
+                ploss = p_loss(degad_images, nogad_images)
+
+                val_loss = (0.5 * mloss) + (0.3 * sloss) + (0.2 * ploss)
+                
                 avg_val_loss += val_loss.item()        
             avg_val_loss /= len(val_loader) #producing average val loss for this epoch
             val_losses.append(avg_val_loss) 
@@ -262,7 +274,12 @@ def train_CNN(input_dir, image_size, batch_size, lr, filter, depth, loss_func, o
             gad_paths = batch["image_filepath"]
             
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
-            loss_value = loss(degad_images, nogad_images)
+            
+            mloss = l1_loss(degad_images, nogad_images)
+            sloss = ssim_loss(degad_images, nogad_images)
+            ploss = p_loss(degad_images, nogad_images)
+
+            loss_value = (0.5 * mloss) + (0.3 * sloss) + (0.2 * ploss)
             test_loss += loss_value.item()
 
             # to save the output files 
@@ -321,3 +338,5 @@ if __name__ == "__main__":
     loss_func=args.loss
     output_direct=args.output_dir
     train_CNN(input_dir,image_size, batch_size,lr,filter_num,depth, loss_func, output_direct)
+
+    # python CNN_whole_images.py --input ~/graham/scratch/degad_preprocessed_data/ --image_size 256 --batch_size 1 --lr 0.0001 --filter 64 --depth 3 --loss ploss --output_dir ~/graham/scratch/mri_degad/output_whole_images_new_data/
