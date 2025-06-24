@@ -11,15 +11,17 @@ from monai.transforms import (
     EnsureChannelFirstd,
     Rand3DElasticd,
     ScaleIntensityd,
-    SpatialPadd,
-    CenterSpatialCropd,
+    Orientationd,
+    Spacingd,
+    ResizeWithPadOrCropd,
     RandFlipd,
     ToTensord,
+    MapTransform,
     GridPatchd,
-    MapTransform
 )
-from monai.data import Dataset, DataLoader
+from monai.data import Dataset, DataLoader, PatchDataset
 from monai.networks.nets import UNet
+from monai.losses import SSIMLoss, PerceptualLoss
 
 import time
 import numpy as np
@@ -77,20 +79,27 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
 
     # train tranforms 
     train_transforms = Compose([
-        LoadImaged(keys=["image", "label"]),  # load image from the file path 
-        EnsureChannelFirstd(keys=["image", "label"]), # ensure this is [C, H, W, (D)]
-        ScaleIntensityd(keys=["image"]), # scales the intensity from 0-1
-        Rand3DElasticd(
-            keys = ("image","label"), 
-            sigma_range = (0.5,1), 
-            magnitude_range = (0.1, 0.4), 
-            prob=0.4, 
-            shear_range=(0.1, -0.05, 0.0, 0.0, 0.0, 0.0),
-            scale_range=0.5, padding_mode= "zeros"
+        LoadImaged(keys=["image", "label"]),
+        EnsureChannelFirstd(keys=["image", "label"]),
+        Orientationd(keys=["image", "label"], axcodes="RAS"),
+        Spacingd(
+            keys=["image", "label"], 
+            pixdim=(1.0, 1.0, 1.0), 
+            mode=("bilinear", "nearest")
         ),
-        RandFlipd(keys = ("image","label"), prob = 0.5, spatial_axis=(0,1,2)),
-        SpatialPadd(keys = ("image","label"), spatial_size=dims_tuple_image), #ensure all images are the correct size if too small
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple_image), # ensure all images are the correct size if too big
+        ResizeWithPadOrCropd(
+            keys=["image", "label"], 
+            spatial_size=(256, 256, 256)
+        ),
+        ScaleIntensityd(keys=["image"]),
+        Rand3DElasticd(
+            keys=["image", "label"],
+            sigma_range=(0.5, 1),
+            magnitude_range=(0.1, 0.3),
+            prob=0.2,
+            padding_mode="zeros"
+        ),
+        RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=(0, 1, 2)),
         GridPatchd(
             keys=("image", "label"),
             patch_size=(dims_tuple_patches),
@@ -100,14 +109,20 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
         ToTensord(keys=["image", "label"])
     ])
 
+    sample_train = train_transforms(train[0])
+    print("Test image shape:", sample_train["image"].shape)
+    print("Test label shape:", sample_train["label"].shape)
+
     # validate 
     val_transforms = Compose([
         SaveImagePath(keys=["image"]),
         LoadImaged(keys=["image", "label"]),  # load image
         EnsureChannelFirstd(keys=["image", "label"]),
         ScaleIntensityd(keys=["image"]),
-        SpatialPadd(keys = ("image","label"),spatial_size=dims_tuple_image), # ensure data is the same size
-        CenterSpatialCropd(keys=("image", "label"), roi_size=dims_tuple_image), # ensure all images are (1,256,256,256) if too big
+        ResizeWithPadOrCropd(
+            keys=["image", "label"], 
+            spatial_size=(256, 256, 256)
+        ),
         ToTensord(keys=["image", "label"])
     ])
 
@@ -151,7 +166,9 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
     max_epochs = 250
     patience = 10
 
-    loss = torch.nn.L1Loss().to(device)
+    l1_loss = torch.nn.L1Loss().to(device) # mae
+    ssim_loss = SSIMLoss(spatial_dims=3) #SSIM
+    p_loss = PerceptualLoss(spatial_dims=3,network_type="vgg")
 
     train_losses = [float('inf')]
     val_losses = [float('inf')]
@@ -182,33 +199,36 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
         epochs_without_improvement = 0
 
         print("--------Training--------")
+        
+        # Iterate over the batch dimension (16 images in this case)
         for batch_idx, batch in enumerate(train_loader):
             gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
             print(f"batch: {batch_idx + 1}")
+            print(f"Original gad_images shape: {gad_images.shape}")  # e.g. [batch_size, num_patches, C, D, H, W]
             
-            image_num = 1
-            # Iterate over the batch dimension (16 images in this case)
-            for gad_image, nogad_image in zip(gad_images, nogad_images):
-                # gad_image and nogad_image have the shape [512, 1, 32, 32, 32]
-                print(f"batch_num: {image_num}")
-                patch_num = 1
-                # Iterate over the patches (512 patches per image)
-                for gad_patch, nogad_patch in zip(gad_image, nogad_image):
-                    # gad_patch and nogad_patch have the shape [1, 32, 32, 32]
-                    print(f"patch_num: {patch_num}")
-                    gad_patch = gad_patch.unsqueeze(0)  # Add the batch dimension: [1, 1, 32, 32, 32]
-                    nogad_patch = nogad_patch.unsqueeze(0)  # Add the batch dimension: [1, 1, 32, 32, 32]
-                    
-                    optimizer.zero_grad()
-                    degad_patch = model(gad_patch)
-                    loss_value = loss(degad_patch, nogad_patch)
-                    loss_value.backward()
-                    optimizer.step()
-                    patch_count += 1
-                    avg_train_loss += loss_value.item()
-                    patch_num += 1
-                
-                image_num += 1
+            batch_size, num_patches, C, D, H, W = gad_images.shape
+            
+            # Flatten batch and patch dims into batch dimension
+            gad_images = gad_images.view(-1, C, D, H, W)
+            nogad_images = nogad_images.view(-1, C, D, H, W)
+            
+            print(f"Reshaped gad_images shape (patch batch): {gad_images.shape}")  # [batch_size*num_patches, C, D, H, W]
+            print(f"Reshaped nogad_images shape (patch batch): {nogad_images.shape}")
+            
+            optimizer.zero_grad()
+            degad_images = model(gad_images)
+            print(f"Model output shape: {degad_images.shape}")
+            
+            mloss = l1_loss(degad_images, nogad_images)
+            sloss = ssim_loss(degad_images, nogad_images)
+            ploss = p_loss(degad_images, nogad_images)
+
+            loss_value = (0.5 * mloss) + (0.3 * sloss) + (0.2 * ploss)
+            loss_value.backward()
+            optimizer.step()
+
+            avg_train_loss += loss_value.item()
+            patch_count += batch_size * num_patches
 
         avg_train_loss /= patch_count  # Average loss per epoch
         train_losses.append(avg_train_loss)  # Append to training losses list
@@ -222,7 +242,11 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
                 gad_images, nogad_images = batch["image"].to(device), batch["label"].to(device)
                 degad_images = model(gad_images)
 
-                val_loss = loss(degad_images, nogad_images)
+                mloss = l1_loss(degad_images, nogad_images)
+                sloss = ssim_loss(degad_images, nogad_images)
+                ploss = p_loss(degad_images, nogad_images)
+
+                val_loss = (0.5 * mloss) + (0.3 * sloss) + (0.2 * ploss)
                 avg_val_loss += val_loss.item() 
             
             avg_val_loss /= len(val_loader)  # Average validation loss for the epoch
@@ -282,7 +306,11 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
             degad_images = sliding_window_inference(gad_images, image_size, 1, model)
             degad_images = degad_images[:, :, :image_size, :image_size, :image_size]
 
-            loss_value = loss(degad_images, nogad_images)
+            mloss = l1_loss(degad_images, nogad_images)
+            sloss = ssim_loss(degad_images, nogad_images)
+            ploss = p_loss(degad_images, nogad_images)
+
+            loss_value = (0.5 * mloss) + (0.3 * sloss) + (0.2 * ploss)
 
             test_loss += loss_value.item()
 
