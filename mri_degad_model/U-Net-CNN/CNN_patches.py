@@ -131,7 +131,7 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
     test_ds = Dataset(data=test, transform=val_transforms)
 
     # training, validating, testing of whole data so use a batch size of 1
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=32, pin_memory=pin_memory)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, pin_memory=pin_memory)
     val_loader = DataLoader(val_ds, batch_size=1, pin_memory=pin_memory)
     test_loader = DataLoader(test_ds, batch_size=1, pin_memory=pin_memory)
     
@@ -167,8 +167,8 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
     patience = 10
 
     l1_loss = torch.nn.L1Loss().to(device) # mae
-    ssim_loss = SSIMLoss(spatial_dims=3) #SSIM
-    p_loss = PerceptualLoss(spatial_dims=3,network_type="vgg")
+    ssim_loss = SSIMLoss(spatial_dims=3).to(device) #SSIM
+    p_loss = PerceptualLoss(spatial_dims=3,network_type="vgg").to(device)
 
     train_losses = [float('inf')]
     val_losses = [float('inf')]
@@ -218,7 +218,7 @@ def train_CNN(input_dir, image_size, patch_size, batch_size, lr, filter, depth, 
             optimizer.zero_grad()
             degad_images = model(gad_images)
             print(f"Model output shape: {degad_images.shape}")
-            
+
             mloss = l1_loss(degad_images, nogad_images)
             sloss = ssim_loss(degad_images, nogad_images)
             ploss = p_loss(degad_images, nogad_images)
