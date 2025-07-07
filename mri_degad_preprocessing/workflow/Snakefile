@@ -284,7 +284,7 @@ if config["qc"]:
 
 rule create_patches:
     input:
-        passing_dataset_gad=bids(
+        input_gad=bids(
             root=work,
             datatype="normalize",
             desc="normalize_minmax",
@@ -292,7 +292,7 @@ rule create_patches:
             acq="gad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"} 
         ),
-        passing_dataset_nongad=bids(
+        input_nogad=bids(
             root=work,
             datatype="normalize",
             desc="normalized_zscore",
@@ -300,19 +300,20 @@ rule create_patches:
             acq="nongad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
         ),
-        passing_dataset_mask=bids(
+        input_mask=bids(
             root=work,
             datatype="normalize",
             desc="normalized_zscore",
             suffix="T1w.nii.gz",
             acq="nongad",
             **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
-        )    
+        ),   
     params:
         radius_vector = '31x31x31', #patch dimensions will be (x*2)+1 voxels
         n = '5', #sample n randomly augment patches
         angle = '10', #stdev of normal distribution for sampling angle (in degrees)
-        frequency = '4500' #sample 1 patch for every n voxels
+        frequency = '4500', #sample 1 patch for every n voxels
+        train_subject_path = config["train_subject_path"]
     output:
         patches = bids(
             root=work,
@@ -324,10 +325,8 @@ rule create_patches:
         )
     resources:    
         mem_mb = 32000
-    
-    # container:
-    #     config["singularity"]["itksnap"]
-    shell: 'c3d {input.passing_dataset_gad} {input.passing_dataset_nongad} {input.passing_dataset_mask} -xpa {params.n} {params.angle} -xp {output.patches} {params.radius_vector} {params.frequency}'
+
+    script: 'scripts/patch_train_subjects.py'
 
 rule all:
     input:
@@ -339,7 +338,7 @@ rule all:
                 suffix="31.dat",
                 acq="nongad",
                 **{k: v for k, v in inputs["t1w"].wildcards.items() if k != "acq"}
-            )
+            ),
         ),
         qc=inputs["t1w"].expand(
             bids(
