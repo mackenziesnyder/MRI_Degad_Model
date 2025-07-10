@@ -2,16 +2,21 @@ import subprocess
 from pathlib import Path
 import sys
 
-def patch_sub(input_gad, input_nogad, input_mask, output_patches, n, angle, radius_vector, frequency, train_subject_path):
+def patch_sub(input_gad, input_nogad, input_mask, output_patches, n, angle, radius_vector, frequency, train_subject_path, val_subject_path):
     
     with open(train_subject_path) as f:
         print("opening train subjects")
         TRAIN_SUBJECTS = {line.strip() for line in f if line.strip()}
+    
+    with open(val_subject_path) as f:
+        print("opening train subjects")
+        VAL_SUBJECTS = {line.strip() for line in f if line.strip()}
 
     subject = snakemake.wildcards["subject"]
+    subject = "sub-" + subject
     print("subject: ",subject)
 
-    if subject not in TRAIN_SUBJECTS:
+    if subject not in TRAIN_SUBJECTS and subject not in VAL_SUBJECTS:
         print(f"Skipping patch creation for subject {subject} (not in train_subjects.txt)")
         # Create empty output file so Snakemake considers this rule done
         Path(snakemake.output["patches"]).touch()
@@ -38,5 +43,6 @@ if __name__ == "__main__":
         n = snakemake.params["n"],
         angle = snakemake.params["angle"],
         frequency = snakemake.params["frequency"],
-        train_subject_path=snakemake.params["train_subject_path"]
+        train_subject_path=snakemake.params["train_subject_path"],
+        val_subject_path=snakemake.params["val_subject_path"]
     )

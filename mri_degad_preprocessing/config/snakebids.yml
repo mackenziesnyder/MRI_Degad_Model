@@ -81,6 +81,8 @@ parse_args:
   
   --train_subject_path:
     help: path to train_subjects.txt file in order to create patches of these subjects
+  --val_subject_path:
+    help: path to val_subjects.txt file in order to create patches of these subjects
 
   --qc:
     help: 'Generate *.html files for QC of preprocessing outputs. (default: %(default)s)'
